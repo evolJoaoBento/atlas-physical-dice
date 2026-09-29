@@ -17,6 +17,8 @@ const context = await esbuild.context({
 	},
 	entryPoints: ["main.ts"],
 	bundle: true,
+	// The default pack's sheets are bundled as bytes; see default-pack.ts.
+	loader: { '.png': 'binary' },
 	external: [
 		"obsidian",
 		"electron",

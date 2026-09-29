@@ -3,6 +3,7 @@ import { D20Dice, DicePack } from './d20-dice';
 import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab } from './settings';
 import { sendRollToAtlas } from './atlas-bridge';
 import { appendDiceIcon } from './dice-icons';
+import { ensureDefaultPack } from './default-pack';
 
 export default class D20DicePlugin extends Plugin {
     settings: DiceSettings;
@@ -25,15 +26,25 @@ export default class D20DicePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
+        // A community install arrives without the pack folder; lay it out.
+        if (this.manifest.dir) {
+            try {
+                await ensureDefaultPack(this.app.vault.adapter, this.manifest.dir, this.manifest.version);
+            } catch (error) {
+                console.error('Could not write the default dice pack:', error);
+                new Notice('Atlas VTT Physical Dice: could not write the default dice pack.');
+            }
+        }
+
         this.addCommand({
             id: 'toggle-dice-roller',
-            name: 'Toggle D20 Dice Roller',
+            name: 'Toggle dice roller',
             callback: () => {
                 this.toggleDiceOverlay();
             }
         });
 
-        this.addRibbonIcon('dice', 'Toggle D20 Dice Roller', (evt: MouseEvent) => {
+        this.addRibbonIcon('dice', 'Toggle dice roller', (evt: MouseEvent) => {
             this.toggleDiceOverlay();
         });
 
@@ -72,7 +83,7 @@ export default class D20DicePlugin extends Plugin {
         const header = this.controlsPanel.createDiv('dice-controls-header');
         const dragHandle = header.createDiv('dice-controls-drag-handle');
         setIcon(dragHandle.createSpan('dice-controls-grip'), 'grip-vertical');
-        dragHandle.createSpan({ cls: 'dice-controls-title', text: 'Physical Dice' });
+        dragHandle.createSpan({ cls: 'dice-controls-title', text: 'Atlas VTT Physical Dice' });
 
         const closeBtn = header.createEl('button', {
             cls: 'dice-floating-close-btn',

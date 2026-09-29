@@ -8,6 +8,8 @@
     "allowJs": true,
     "noImplicitAny": false,
     "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "importHelpers": true,
     "declaration": false,
     "noEmit": true,

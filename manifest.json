@@ -1,10 +1,10 @@
 {
-	"id": "dsix",
-	"name": "Physical Dice",
-	"version": "1.1.0",
-	"minAppVersion": "0.15.0",
-	"description": "3D physical dice roller with drag-to-throw, seven dice types and texture packs that describe the whole set.",
+	"id": "atlas-physical-dice",
+	"name": "Atlas VTT Physical Dice",
+	"version": "1.0.0",
+	"minAppVersion": "1.8.7",
+	"description": "Roll 3D physical dice with drag-to-throw over your notes, and send every result to Atlas VTT's roll log, toast and player view.",
 	"author": "João Bento",
-	"authorUrl": "",
+	"authorUrl": "https://github.com/evolJoaoBento",
 	"isDesktopOnly": false
 }

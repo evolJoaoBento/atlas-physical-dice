@@ -48,7 +48,7 @@ export function toAtlasRoll(dice: RolledDie[], now = Date.now()): AtlasDiceRoll 
         modifiers: 0,
         // The same total the overlay shows, so both always agree.
         total: dice.reduce((sum, die) => sum + die.value, 0),
-        player: 'Physical Dice',
+        player: 'Atlas VTT Physical Dice',
         source: { type: 'toolbar' },
     };
 }

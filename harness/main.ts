@@ -31,7 +31,7 @@ import { installCounters, probe, resetCounters, HarnessProbe } from './instrumen
 installCounters();
 
 const MANIFEST: PluginManifest = {
-    id: 'dsix',
+    id: 'atlas-physical-dice',
     name: 'Physical Dice',
     version: '1.0.0',
     dir: '.obsidian/plugins/obsidian-physical-dice-main'

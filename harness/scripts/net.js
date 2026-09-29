@@ -17,9 +17,9 @@
  * pentagons for a d12.
  */
 
-const p = app.plugins.plugins.dsix;
+const p = app.plugins.plugins["atlas-physical-dice"];
 if (!p.isVisible) {
-    app.commands.executeCommandById('dsix:toggle-dice-roller');
+    app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller');
     await new Promise((r) => setTimeout(r, 900));
 }
 

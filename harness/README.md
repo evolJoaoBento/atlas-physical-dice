@@ -27,7 +27,7 @@ node harness/obsidian-cdp.mjs stop       # close Obsidian, and the port with it
 `ensure` is idempotent, so it costs nothing to run first. `restart` is the one
 to use after a rebuild: it is what loads the new `main.js`. Both close Obsidian
 by asking its window to close before insisting, wait for the debug port to
-answer, and then wait again for `app.plugins.plugins.dsix` to exist — a window
+answer, and then wait again for `app.plugins.plugins["atlas-physical-dice"]` to exist — a window
 on the port is not yet a loaded plugin, and an eval that lands in between fails
 for reasons that have nothing to do with what it was testing.
 
@@ -36,7 +36,7 @@ Set `OBSIDIAN_EXE` if Obsidian is not at `%LOCALAPPDATA%\Obsidian\Obsidian.exe`.
 Then:
 
 ```bash
-node harness/obsidian-cdp.mjs eval "app.plugins.plugins.dsix.settings.diceSize"
+node harness/obsidian-cdp.mjs eval "app.plugins.plugins["atlas-physical-dice"].settings.diceSize"
 node harness/obsidian-cdp.mjs eval-file harness/scripts/smoke.js   # 23 checks
 node harness/obsidian-cdp.mjs shot out.png                         # whole window
 node harness/obsidian-cdp.mjs shot out.png 300 390 1120 180 2      # clipped, 2x

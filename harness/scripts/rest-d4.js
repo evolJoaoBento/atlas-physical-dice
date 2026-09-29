@@ -1,6 +1,6 @@
 /* Rest a d4 on one face, so the corner you are meant to read points up. */
-const p = app.plugins.plugins.dsix;
-if (!p.isVisible) { app.commands.executeCommandById('dsix:toggle-dice-roller'); await new Promise(r => setTimeout(r, 900)); }
+const p = app.plugins.plugins["atlas-physical-dice"];
+if (!p.isVisible) { app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller'); await new Promise(r => setTimeout(r, 900)); }
 const d = p.dice;
 const faceIdx = window.__face ?? 0;
 

@@ -48,11 +48,11 @@ const onErr = (e) => errors.push('uncaught: ' + (e.message || e.reason));
 window.addEventListener('error', onErr);
 window.addEventListener('unhandledrejection', onErr);
 
-const plugin = app.plugins.plugins.dsix;
+const plugin = app.plugins.plugins["atlas-physical-dice"];
 
 try {
     // --- open ---------------------------------------------------------------
-    if (!plugin.isVisible) app.commands.executeCommandById('dsix:toggle-dice-roller');
+    if (!plugin.isVisible) app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller');
     await wait(600);
     record('overlay opens', plugin.isVisible === true);
 
@@ -255,7 +255,7 @@ try {
     record('the clickthrough button is gone',
         !panel.querySelector('.dice-clickthrough-button'));
     record('the clickthrough command is gone',
-        !app.commands.listCommands().some((c) => c.id === 'dsix:toggle-dice-clickthrough'));
+        !app.commands.listCommands().some((c) => c.id === 'atlas-physical-dice:toggle-dice-clickthrough'));
 
     // A held die must reach the tray walls. The drag used to clamp to a
     // hardcoded +/-9 by +/-6 while the tray is sized from the camera, so on a
@@ -380,14 +380,14 @@ try {
 
     // --- close and reopen (leak check) ---------------------------------------
     const canvasesBefore = document.querySelectorAll('canvas').length;
-    app.commands.executeCommandById('dsix:toggle-dice-roller');
+    app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller');
     await wait(400);
     record('overlay closes', plugin.isVisible === false);
     record('overlay removed from dom', document.querySelectorAll('.dice-floating-overlay').length === 0);
 
-    app.commands.executeCommandById('dsix:toggle-dice-roller');
+    app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller');
     await wait(600);
-    app.commands.executeCommandById('dsix:toggle-dice-roller');
+    app.commands.executeCommandById('atlas-physical-dice:toggle-dice-roller');
     await wait(400);
     record('canvases not accumulating', document.querySelectorAll('canvas').length <= canvasesBefore,
         `${canvasesBefore} -> ${document.querySelectorAll('canvas').length}`);

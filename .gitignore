@@ -8,6 +8,7 @@ dsix alt/
 # loads main.js, manifest.json and styles.css.
 *.d.ts
 !obsidian.d.ts
+!assets.d.ts
 api-client.js
 chat-modal.js
 chat-view.js
@@ -21,3 +22,7 @@ harness/harness.js
 
 # Obsidian's own stylesheet, extracted locally for the harness
 harness/obsidian-app.css
+.claude/
+
+# written by the plugin on load: which release laid out the default pack
+dice/Texture-Pack-Default/.version

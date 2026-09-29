@@ -11,7 +11,7 @@
  *   Stop-Process -Name obsidian; & "$env:LOCALAPPDATA\Obsidian\Obsidian.exe" --remote-debugging-port=9222
  *
  * Then:
- *   node harness/obsidian-cdp.mjs eval "app.plugins.plugins.dsix.settings.diceSize"
+ *   node harness/obsidian-cdp.mjs eval "app.plugins.plugins["atlas-physical-dice"].settings.diceSize"
  *   node harness/obsidian-cdp.mjs eval-file probe.js
  *   node harness/obsidian-cdp.mjs shot out.png
  *   node harness/obsidian-cdp.mjs click 240 195
@@ -144,7 +144,7 @@ async function ensureObsidian({ restart = false } = {}) {
     const loaded = await withSession(
         (send) =>
             until(
-                async () => (await evaluate(send, 'return !!app.plugins.plugins.dsix;')) === 'true',
+                async () => (await evaluate(send, 'return !!app.plugins.plugins["atlas-physical-dice"];')) === 'true',
                 30000,
                 500
             ),
@@ -334,7 +334,7 @@ const commands = {
         return evaluate(
             send,
             `
-            const d = app.plugins.plugins.dsix?.dice;
+            const d = app.plugins.plugins["atlas-physical-dice"]?.dice;
             if (!d) return 'overlay closed';
             let settledAt = null;
             for (let i = 0; i < ${frames}; i++) {

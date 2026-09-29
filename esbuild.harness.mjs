@@ -27,6 +27,8 @@ const PORT = Number(process.env.HARNESS_PORT || 8732);
 const harnessConfig = {
     entryPoints: ['harness/main.ts'],
     bundle: true,
+    // The default pack's sheets are bundled as bytes; see default-pack.ts.
+    loader: { '.png': 'binary' },
     outfile: 'harness/harness.js',
     format: 'iife',
     target: 'es2018',
@@ -45,6 +47,8 @@ const harnessConfig = {
 const pluginConfig = {
     entryPoints: ['main.ts'],
     bundle: true,
+    // The default pack's sheets are bundled as bytes; see default-pack.ts.
+    loader: { '.png': 'binary' },
     outfile: 'main.js',
     format: 'cjs',
     target: 'es2018',

@@ -526,3 +526,37 @@
     color: var(--text-muted);
     text-align: center;
 }
+
+/* Settings: collapsible sections */
+.dice-settings-header {
+    cursor: pointer;
+    padding: var(--size-4-2) var(--size-4-3);
+    margin-bottom: var(--size-4-2);
+    background: var(--background-modifier-hover);
+    border-radius: var(--radius-s);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.dice-settings-title {
+    font-weight: var(--font-semibold);
+    font-size: var(--font-ui-medium);
+}
+
+.dice-settings-arrow {
+    transition: transform 0.2s;
+}
+
+.dice-settings-section.is-collapsed .dice-settings-arrow {
+    transform: rotate(-90deg);
+}
+
+.dice-settings-section.is-collapsed .dice-settings-content {
+    display: none;
+}
+
+.dice-settings-note {
+    font-size: var(--font-ui-smaller);
+    margin-top: var(--size-4-1);
+}

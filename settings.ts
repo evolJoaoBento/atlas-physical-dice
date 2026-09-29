@@ -124,30 +124,20 @@ export class DiceSettingTab extends PluginSettingTab {
     private createCollapsibleSection(containerEl: HTMLElement, title: string, key: string): HTMLElement {
         const sectionContainer = containerEl.createDiv({ cls: 'dice-settings-section' });
 
-        // Create header with collapse toggle
         const header = sectionContainer.createDiv({ cls: 'dice-settings-header' });
-        header.style.cssText = 'cursor: pointer; padding: 10px; background: var(--background-modifier-hover); border-radius: 5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;';
-
-        const title_el = header.createEl('h3', { text: title });
-        title_el.style.margin = '0';
-
-        const arrow = header.createSpan({ text: '▼' });
-        arrow.style.cssText = 'transition: transform 0.2s;';
+        header.createDiv({ cls: 'dice-settings-title', text: title });
+        header.createSpan({ cls: 'dice-settings-arrow', text: '▼' });
 
         const content = sectionContainer.createDiv({ cls: 'dice-settings-content' });
 
-        // Load collapsed state from localStorage (default to collapsed)
-        const isCollapsed = localStorage.getItem(`dice-settings-${key}`) !== 'false';
-        if (isCollapsed) {
-            content.style.display = 'none';
-            arrow.style.transform = 'rotate(-90deg)';
-        }
+        // Collapsed unless the user opened it last time.
+        const storageKey = `atlas-physical-dice-settings-${key}`;
+        sectionContainer.toggleClass('is-collapsed', this.app.loadLocalStorage(storageKey) !== 'false');
 
         header.addEventListener('click', () => {
-            const collapsed = content.style.display === 'none';
-            content.style.display = collapsed ? 'block' : 'none';
-            arrow.style.transform = collapsed ? 'rotate(0deg)' : 'rotate(-90deg)';
-            localStorage.setItem(`dice-settings-${key}`, (!collapsed).toString());
+            const collapsed = !sectionContainer.hasClass('is-collapsed');
+            sectionContainer.toggleClass('is-collapsed', collapsed);
+            this.app.saveLocalStorage(storageKey, collapsed.toString());
         });
 
         return content;
@@ -158,10 +148,8 @@ export class DiceSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'D20 Dice Roller Settings' });
-
         // Dice Configuration Section
-        const diceSection = this.createCollapsibleSection(containerEl, 'Dice Configuration', 'dice');
+        const diceSection = this.createCollapsibleSection(containerEl, 'Dice', 'dice');
 
 
         new Setting(diceSection)
@@ -201,7 +189,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         // Shadow Settings Section
-        const shadowSection = this.createCollapsibleSection(containerEl, 'Shadow Settings', 'shadows');
+        const shadowSection = this.createCollapsibleSection(containerEl, 'Shadows', 'shadows');
 
         new Setting(shadowSection)
             .setName('Dice shadows')
@@ -215,9 +203,9 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         // Lighting Settings Section
-        const lightingSection = this.createCollapsibleSection(containerEl, 'Lighting Settings', 'lighting');
+        const lightingSection = this.createCollapsibleSection(containerEl, 'Lighting', 'lighting');
 
-        lightingSection.createEl('h4', { text: 'Ambient Light', cls: 'dice-settings-subheader' });
+        new Setting(lightingSection).setName('Ambient light').setHeading();
 
         new Setting(lightingSection)
             .setName('Ambient light intensity')
@@ -243,7 +231,7 @@ export class DiceSettingTab extends PluginSettingTab {
                     this.plugin.refreshDiceView();
                 }));
 
-        lightingSection.createEl('h4', { text: 'Directional Light', cls: 'dice-settings-subheader' });
+        new Setting(lightingSection).setName('Directional light').setHeading();
 
         new Setting(lightingSection)
             .setName('Directional light intensity')
@@ -309,7 +297,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         // Motion Detection Settings Section
-        const motionSection = this.createCollapsibleSection(containerEl, 'Motion Detection Settings', 'motion');
+        const motionSection = this.createCollapsibleSection(containerEl, 'Motion detection', 'motion');
 
         new Setting(motionSection)
             .setName('Motion threshold')
@@ -319,20 +307,16 @@ export class DiceSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.motionThreshold)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
-                    console.log('⚙️ Motion threshold changed from', this.plugin.settings.motionThreshold, 'to', value);
                     this.plugin.settings.motionThreshold = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshDiceView();
                 }));
 
         // Add explanatory text
-        const explanationEl = motionSection.createEl('div', {
-            cls: 'setting-item-description',
+        motionSection.createEl('div', {
+            cls: 'setting-item-description dice-settings-note',
             text: 'Examples: 1.0 = normal, 5.0 = very patient (9sec timeout), 10.0 = extremely patient (14sec timeout)'
         });
-        explanationEl.style.fontSize = '12px';
-        explanationEl.style.opacity = '0.8';
-        explanationEl.style.marginTop = '5px';
 
         new Setting(motionSection)
             .setName('Face detection tolerance')
@@ -342,7 +326,6 @@ export class DiceSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.faceDetectionTolerance)
                 .setDynamicTooltip()
                 .onChange(async (value) => {
-                    console.log('⚙️ Face detection tolerance changed from', this.plugin.settings.faceDetectionTolerance, 'to', value);
                     this.plugin.settings.faceDetectionTolerance = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshDiceView();
@@ -365,7 +348,6 @@ export class DiceSettingTab extends PluginSettingTab {
             .addColorPicker(color => color
                 .setValue(this.plugin.settings.completedDiceHighlightColor)
                 .onChange(async (value) => {
-                    console.log('⚙️ Completed dice highlight color changed to', value);
                     this.plugin.settings.completedDiceHighlightColor = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshDiceView();

@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-physical-dice",
-  "version": "1.1.0",
-  "description": "3D physical dice roller for Obsidian",
+  "name": "atlas-physical-dice",
+  "version": "1.0.0",
+  "description": "3D physical dice roller for Obsidian that sends its rolls to Atlas VTT",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -11,7 +11,7 @@
     "harness:css": "node harness/extract-obsidian-css.mjs"
   },
   "keywords": [],
-  "author": "",
+  "author": "João Bento",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^16.11.6",
@@ -26,5 +26,9 @@
   "dependencies": {
     "cannon-es": "^0.20.0",
     "three": "^0.156.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evolJoaoBento/atlas-physical-dice.git"
   }
 }

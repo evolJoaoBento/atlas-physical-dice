@@ -13,7 +13,7 @@
  * say the numbers are.
  */
 
-const p = app.plugins.plugins.dsix;
+const p = app.plugins.plugins["atlas-physical-dice"];
 const type = window.__type;
 const table = window.__table;   // [{number, corners}]
 const url = p.dice.packTextures[type];
