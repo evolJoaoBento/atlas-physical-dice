@@ -1,4 +1,4 @@
-import { Plugin, Notice, debounce, setIcon } from 'obsidian';
+import { Plugin, Notice, debounce, setIcon, Platform, FileSystemAdapter } from 'obsidian';
 import { D20Dice, DicePack } from './d20-dice';
 import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab } from './settings';
 import { sendRollToAtlas } from './atlas-bridge';
@@ -589,6 +589,26 @@ export default class D20DicePlugin extends Plugin {
         this.dice.setPack(this.packConfig || {});
         this.dice.setPackTextures(this.resolvePackFiles('texture'), this.resolvePackFiles('normal'));
         this.dice.rebuildDice();
+    }
+
+    /**
+     * Open the `dice/` folder in the system file manager, where a new pack is
+     * dropped in. Mobile has no file manager to hand it to, so it gets the path.
+     */
+    async openPacksFolder(): Promise<void> {
+        const dir = this.manifest.dir;
+        if (!dir) return;
+        const packsDir = `${dir}/dice`;
+        const adapter = this.app.vault.adapter;
+        if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
+            new Notice(`Dice packs live in ${packsDir}`);
+            return;
+        }
+        if (!(await adapter.exists(packsDir))) await adapter.mkdir(packsDir);
+        // Electron is only reached on desktop, behind the check above.
+        const { shell } = (window as any).require('electron');
+        const error: string = await shell.openPath(adapter.getFullPath(packsDir));
+        if (error) new Notice(`Could not open the dice packs folder: ${error}`);
     }
 
     /** Pack folders available to choose from, for the settings dropdown. */

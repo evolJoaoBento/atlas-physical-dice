@@ -173,7 +173,15 @@ export class DiceSettingTab extends PluginSettingTab {
                         if (pack !== current) dropdown.addOption(pack, pack);
                     }
                 });
-            });
+            })
+            .addExtraButton(button => button
+                .setIcon('folder-open')
+                .setTooltip('Open dice packs folder')
+                .onClick(() => { void this.plugin.openPacksFolder(); }))
+            .addExtraButton(button => button
+                .setIcon('refresh-cw')
+                .setTooltip('Reload dice packs')
+                .onClick(() => this.display()));
 
         new Setting(diceSection)
             .setName('Dice size')

@@ -1,6 +1,6 @@
 {
   "name": "Default",
-  "color": "#ff4444",
+  "color": "#ffffff",
   "bevel": {
     "enabled": true,
     "depth": 0.1,
@@ -10,7 +10,7 @@
     "shininess": 100,
     "specular": "#222222",
     "transparent": false,
-    "opacity": 1.0
+    "opacity": 1
   },
   "dice": {
     "d4": {
@@ -182,7 +182,7 @@
     },
     "d8": {
       "texture": "d8_Numbers.png",
-      "scale": 1.0,
+      "scale": 1,
       "rimUV": [
         0.85,
         0.5
@@ -347,7 +347,7 @@
     },
     "d10": {
       "texture": "d10_Numbers.png",
-      "scale": 1.0,
+      "scale": 1,
       "rimUV": [
         0.85,
         0.5
@@ -591,7 +591,7 @@
     "d100": {
       "geometry": "d10",
       "texture": "d10_Percent_Numbers.png",
-      "scale": 1.0,
+      "scale": 1,
       "rimUV": [
         0.85,
         0.5
@@ -834,7 +834,7 @@
     },
     "d12": {
       "texture": "d12_Numbers.png",
-      "scale": 1.0,
+      "scale": 1,
       "rimUV": [
         0.85,
         0.5
@@ -1171,7 +1171,7 @@
     },
     "d20": {
       "texture": "d20_Numbers.png",
-      "scale": 1.0,
+      "scale": 1,
       "rimUV": [
         0.85,
         0.5

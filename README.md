@@ -47,9 +47,10 @@ match Atlas' own dice panel.
 
 On first load the plugin writes its default set to
 `<vault>/.obsidian/plugins/atlas-physical-dice/dice/Texture-Pack-Default/`.
-That folder belongs to the plugin and is refreshed on update. To make your own,
-copy it under a new name, edit the art and `pack.json`, and pick it in the
-settings. See [dice/README.md](dice/README.md) for the format.
+The default set is white with black numbers. That folder belongs to the plugin
+and is refreshed on update. To make your own, click the folder button next to
+**Dice pack** in the settings, copy the default folder under a new name, edit
+the art and `pack.json`, click the reload button and pick it from the list. See [dice/README.md](dice/README.md) for the format.
 
 ## Installation
 
