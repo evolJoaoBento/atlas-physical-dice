@@ -1,6 +1,5 @@
 import esbuild from "esbuild";
-import process from "process";
-import builtins from "builtin-modules";
+/* global process -- this build script runs under Node */
 
 const banner =
 `/*
@@ -32,8 +31,8 @@ const context = await esbuild.context({
 		"@codemirror/view",
 		"@lezer/common",
 		"@lezer/highlight",
-		"@lezer/lr",
-		...builtins],
+		"@lezer/lr"],
+	// No Node built-ins: the plugin imports none, so the bundle is unchanged.
 	format: "cjs",
 	target: "es2018",
 	logLevel: "info",

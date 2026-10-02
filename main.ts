@@ -5,6 +5,11 @@ import { sendRollToAtlas } from './atlas-bridge';
 import { appendDiceIcon } from './dice-icons';
 import { ensureDefaultPack } from './default-pack';
 
+/** The slice of Electron's renderer API the packs-folder button uses. */
+interface ElectronWindow {
+    require(module: 'electron'): { shell: { openPath(path: string): Promise<string> } };
+}
+
 export default class D20DicePlugin extends Plugin {
     settings: DiceSettings;
     private diceOverlay: HTMLElement | null = null;
@@ -34,7 +39,7 @@ export default class D20DicePlugin extends Plugin {
                 await ensureDefaultPack(this.app.vault.adapter, this.manifest.dir, this.manifest.version);
             } catch (error) {
                 console.error('Could not write the default dice pack:', error);
-                new Notice('Atlas VTT Physical Dice: could not write the default dice pack.');
+                new Notice('Could not write the default dice pack.');
             }
         }
 
@@ -53,11 +58,11 @@ export default class D20DicePlugin extends Plugin {
         this.addSettingTab(new DiceSettingTab(this.app, this));
     }
 
-    async onunload() {
+    onunload() {
         this.hideDiceOverlay();
         // Write straight through: a queued debounce would never fire.
         this.queueSave.cancel();
-        await this.writeSettings();
+        void this.writeSettings();
     }
 
     private toggleDiceOverlay() {
@@ -105,7 +110,7 @@ export default class D20DicePlugin extends Plugin {
 
         // Reroll caught dice button
         const rerollButton = this.controlsPanel.createEl('button', {
-            text: 'Reroll Caught Dice',
+            text: 'Reroll caught dice',
             cls: 'dice-reroll-button'
         });
         rerollButton.hide();
@@ -160,7 +165,7 @@ export default class D20DicePlugin extends Plugin {
             if (totalDice >= 50) {
                 new Notice('The tray holds at most 50 dice');
                 button.addClass('is-at-limit');
-                setTimeout(() => button.removeClass('is-at-limit'), 1500);
+                window.setTimeout(() => button.removeClass('is-at-limit'), 1500);
                 return;
             }
             (this.settings.diceCounts as Record<string, number>)[type]++;
@@ -212,9 +217,9 @@ export default class D20DicePlugin extends Plugin {
         });
         updateDiceCountDisplay();
 
-        clearButton.addEventListener('click', async () => {
+        const clearAllDice = async () => {
             Object.keys(this.settings.diceCounts).forEach(key => {
-                (this.settings.diceCounts as any)[key] = 0;
+                (this.settings.diceCounts as Record<string, number>)[key] = 0;
             });
             await this.saveSettings();
 
@@ -225,7 +230,8 @@ export default class D20DicePlugin extends Plugin {
 
             updateDiceCountDisplay();
             this.refreshDiceView();
-        });
+        };
+        clearButton.addEventListener('click', () => { void clearAllDice(); });
 
         // No clickthrough control: the canvas takes the pointer only while it
         // is over a die, and passes everything else to the note underneath.
@@ -236,8 +242,7 @@ export default class D20DicePlugin extends Plugin {
         this.setupControlsDragging(dragHandle);
 
         // Position controls panel initially
-        this.controlsPanel.style.left = '50px';
-        this.controlsPanel.style.top = '100px';
+        this.controlsPanel.setCssStyles({ left: '50px', top: '100px' });
 
         // Initialize dice with settings
         this.dice = new D20Dice(diceContainer, this.settings);
@@ -246,13 +251,13 @@ export default class D20DicePlugin extends Plugin {
         // Create any dice that are already in the settings (from dice requests)
         Object.entries(this.settings.diceCounts).forEach(([diceType, count]) => {
             for (let i = 0; i < count; i++) {
-                this.dice!.createSingleDice(diceType);
+                this.dice.createSingleDice(diceType);
             }
         });
 
         // Set up calibration callback
         this.dice.onCalibrationChanged = () => {
-            this.saveSettings();
+            void this.saveSettings();
         };
 
         // Set up callback for drag-based rolls (now expects string)
@@ -292,7 +297,7 @@ export default class D20DicePlugin extends Plugin {
         });
 
         // Set up button roll
-        rollButton.addEventListener('click', async () => {
+        const rollAllDice = async () => {
             rollButton.disabled = true;
             rollButton.textContent = 'Rolling...';
             resultElement.textContent = '';
@@ -303,30 +308,31 @@ export default class D20DicePlugin extends Plugin {
             startStatusMonitoring();
 
             try {
-                const result = await this.dice!.roll();
+                const result = await this.dice.roll();
                 this.handleRollComplete(result, resultElement);
                 statusElement.textContent = 'Roll complete!';
                 rerollButton.hide();
 
                 // Stop monitoring after completion
-                setTimeout(() => {
+                window.setTimeout(() => {
                     stopStatusMonitoring();
                     statusElement.textContent = '';
                 }, 3000);
-            } catch (error) {
+            } catch {
                 resultElement.textContent = 'Error rolling dice';
                 resultElement.className = 'dice-result-overlay error';
                 statusElement.textContent = 'Roll failed';
 
                 // Stop monitoring on error
-                setTimeout(() => {
+                window.setTimeout(() => {
                     stopStatusMonitoring();
                 }, 3000);
             } finally {
                 rollButton.disabled = false;
                 updateRollButtonText('d20');
             }
-        });
+        };
+        rollButton.addEventListener('click', () => { void rollAllDice(); });
 
         this.isVisible = true;
 
@@ -363,10 +369,10 @@ export default class D20DicePlugin extends Plugin {
     private setupControlsDragging(dragHandle: HTMLElement) {
         dragHandle.addEventListener('mousedown', (e) => {
             this.isDraggingControls = true;
-            const rect = this.controlsPanel!.getBoundingClientRect();
+            const rect = this.controlsPanel.getBoundingClientRect();
             this.controlsDragOffset.x = e.clientX - rect.left;
             this.controlsDragOffset.y = e.clientY - rect.top;
-            dragHandle.style.cursor = 'grabbing';
+            dragHandle.addClass('is-dragging');
             e.preventDefault();
         });
 
@@ -381,15 +387,17 @@ export default class D20DicePlugin extends Plugin {
                 const maxX = window.innerWidth - this.controlsPanel.offsetWidth;
                 const maxY = window.innerHeight - this.controlsPanel.offsetHeight;
 
-                this.controlsPanel.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
-                this.controlsPanel.style.top = `${Math.max(44, Math.min(y, maxY))}px`; // 44px for ribbon
+                this.controlsPanel.setCssStyles({
+                    left: `${Math.max(0, Math.min(x, maxX))}px`,
+                    top: `${Math.max(44, Math.min(y, maxY))}px` // 44px for ribbon
+                });
             }
         };
 
         const onUp = () => {
             if (this.isDraggingControls) {
                 this.isDraggingControls = false;
-                dragHandle.style.cursor = 'grab';
+                dragHandle.removeClass('is-dragging');
             }
         };
 
@@ -412,23 +420,11 @@ export default class D20DicePlugin extends Plugin {
             navigator.clipboard.writeText(copyableText).then(() => {
                 const originalText = resultElement.textContent;
                 resultElement.textContent = 'Copied!';
-                setTimeout(() => {
+                window.setTimeout(() => {
                     resultElement.textContent = originalText;
                 }, 1000);
             }).catch(() => {
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = copyableText;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-
-                const originalText = resultElement.textContent;
-                resultElement.textContent = 'Copied!';
-                setTimeout(() => {
-                    resultElement.textContent = originalText;
-                }, 1000);
+                new Notice('Could not copy the roll to the clipboard.');
             });
         };
     }
@@ -452,7 +448,7 @@ export default class D20DicePlugin extends Plugin {
         let rect = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
 
         for (const selector of ['.workspace', '.app-container']) {
-            const candidate = document.querySelector(selector) as HTMLElement | null;
+            const candidate = document.querySelector<HTMLElement>(selector);
             if (!candidate) continue;
             const candidateRect = candidate.getBoundingClientRect();
             if (candidateRect.width <= 0 || candidateRect.height <= 0) continue;
@@ -468,7 +464,7 @@ export default class D20DicePlugin extends Plugin {
         // a different number at a different zoom, which is the whole reason
         // this is measured. Clamping rather than subtracting keeps it correct
         // on a build where `.workspace` already starts below the titlebar.
-        const titlebar = document.querySelector('.titlebar') as HTMLElement | null;
+        const titlebar = document.querySelector<HTMLElement>('.titlebar');
         if (titlebar) {
             const bar = titlebar.getBoundingClientRect();
             const top = Math.max(rect.top, bar.bottom);
@@ -487,10 +483,12 @@ export default class D20DicePlugin extends Plugin {
 
         // The overlay is position: fixed, so viewport coordinates go in as they
         // come out of getBoundingClientRect().
-        this.diceOverlay.style.left = `${rect.left}px`;
-        this.diceOverlay.style.top = `${rect.top}px`;
-        this.diceOverlay.style.width = `${rect.width}px`;
-        this.diceOverlay.style.height = `${rect.height}px`;
+        this.diceOverlay.setCssStyles({
+            left: `${rect.left}px`,
+            top: `${rect.top}px`,
+            width: `${rect.width}px`,
+            height: `${rect.height}px`
+        });
 
         this.dice.updateSize(rect.width, rect.height);
     }
@@ -503,15 +501,14 @@ export default class D20DicePlugin extends Plugin {
         this.closeColorPicker?.();
         const rect = button.getBoundingClientRect();
         const picker = document.body.createDiv({ cls: 'dice-color-picker', attr: { role: 'group', 'aria-label': `Add a ${type} in a colour` } });
-        picker.style.left = `${rect.left + rect.width / 2}px`;
-        picker.style.top = `${rect.top}px`;
+        picker.setCssStyles({ left: `${rect.left + rect.width / 2}px`, top: `${rect.top}px` });
 
         for (const entry of this.settings.diceColors) {
             const circle = picker.createEl('button', {
                 cls: 'dice-color-circle',
                 attr: { 'aria-label': `${entry.name || entry.color} ${type}` }
             });
-            circle.style.setProperty('--dice-swatch', entry.color);
+            circle.setCssProps({ '--dice-swatch': entry.color });
             circle.addEventListener('click', () => onPick(entry.color));
         }
 
@@ -555,9 +552,9 @@ export default class D20DicePlugin extends Plugin {
 
         // Reset dice counts when closing
         Object.keys(this.settings.diceCounts).forEach(key => {
-            (this.settings.diceCounts as any)[key] = 0;
+            (this.settings.diceCounts as Record<string, number>)[key] = 0;
         });
-        this.saveSettings();
+        void this.saveSettings();
 
         this.controlsPanel = null;
         this.isDraggingControls = false;
@@ -648,7 +645,7 @@ export default class D20DicePlugin extends Plugin {
         }
         if (!(await adapter.exists(packsDir))) await adapter.mkdir(packsDir);
         // Electron is only reached on desktop, behind the check above.
-        const { shell } = (window as any).require('electron');
+        const { shell } = (window as unknown as ElectronWindow).require('electron');
         const error: string = await shell.openPath(adapter.getFullPath(packsDir));
         if (error) new Notice(`Could not open the dice packs folder: ${error}`);
     }
@@ -669,7 +666,7 @@ export default class D20DicePlugin extends Plugin {
     }
 
     async loadSettings() {
-        const stored = (await this.loadData()) ?? {};
+        const stored = ((await this.loadData()) ?? {}) as Partial<DiceSettings> & Record<string, unknown>;
         // Object.assign is shallow, so without cloning the nested objects a
         // fresh vault ends up mutating DEFAULT_SETTINGS itself — dice counts and
         // textures are written in place all over the plugin.

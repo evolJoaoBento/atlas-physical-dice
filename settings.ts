@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 import D20DicePlugin from './main';
 
 export interface DiceSettings {
@@ -230,7 +230,7 @@ export class DiceSettingTab extends PluginSettingTab {
                     await this.plugin.applyTexturePack();
                     this.plugin.refreshDiceView();
                 });
-                this.plugin.listTexturePacks().then((packs) => {
+                void this.plugin.listTexturePacks().then((packs) => {
                     for (const pack of packs) {
                         if (pack !== current) dropdown.addOption(pack, pack);
                     }
@@ -328,7 +328,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(lightingSection)
-            .setName('Light position X')
+            .setName('Light horizontal position')
             .setDesc('Horizontal position of the directional light (-50 to 50)')
             .addSlider(slider => slider
                 .setLimits(-50, 50, 1)
@@ -341,7 +341,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(lightingSection)
-            .setName('Light position Y')
+            .setName('Light height')
             .setDesc('Vertical position of the directional light (0 to 100)')
             .addSlider(slider => slider
                 .setLimits(0, 100, 1)
@@ -354,7 +354,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(lightingSection)
-            .setName('Light position Z')
+            .setName('Light depth')
             .setDesc('Depth position of the directional light (-50 to 50)')
             .addSlider(slider => slider
                 .setLimits(-50, 50, 1)
@@ -383,7 +383,7 @@ export class DiceSettingTab extends PluginSettingTab {
                 }));
 
         // Add explanatory text
-        motionSection.createEl('div', {
+        motionSection.createDiv({
             cls: 'setting-item-description dice-settings-note',
             text: 'Examples: 1.0 = normal, 5.0 = very patient (9sec timeout), 10.0 = extremely patient (14sec timeout)'
         });

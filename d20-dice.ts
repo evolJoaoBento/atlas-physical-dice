@@ -4,7 +4,7 @@ import { DiceSettings } from './settings';
 
 /** Flip to true to get the roll and face-detection trace back on the console. */
 const DEBUG = false;
-const log = (...args: unknown[]): void => { if (DEBUG) console.log(...args); };
+const log = (...args: unknown[]): void => { if (DEBUG) console.debug(...args); };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -258,7 +258,7 @@ export class D20Dice {
     private isRolling = false;
     private container: HTMLElement;
     private animationId: number | null = null;
-    private rollTimeout: NodeJS.Timeout | null = null;
+    private rollTimeout: number | null = null;
     private isDragging = false;
     private dragStartPosition = { x: 0, y: 0 };
     private mouse = new THREE.Vector2();
@@ -276,7 +276,7 @@ export class D20Dice {
     private diceTypeArray: string[] = [];
     /** Each die's own colour, index-aligned with diceTypeArray; null wears the pack's. */
     private diceColorArray: Array<string | null> = [];
-    private selectedDice: THREE.Mesh[] = [];
+    private selectedDice: number[] = [];
     private draggedDiceIndex = -1;
     private trayBodies: CANNON.Body[] = [];
     /** One blurred disc per die, index-aligned with diceArray. */
@@ -414,7 +414,7 @@ export class D20Dice {
             const canvas = this.renderer.domElement;
             canvas.addEventListener('webglcontextlost', (event) => {
                 if (!this.isTearingDown) {
-                    console.warn('WebGL context lost, attempting to prevent default');
+                    log('WebGL context lost, attempting to prevent default');
                 }
                 event.preventDefault();
             });
@@ -424,6 +424,7 @@ export class D20Dice {
                 this.reinitializeAfterContextLoss();
             });
 
+            canvas.addClass('dice-canvas');
             this.container.appendChild(canvas);
 
             // Set initial size to fill container
@@ -445,11 +446,11 @@ export class D20Dice {
             this.wake();
         } catch (error) {
             console.error('Failed to initialize D20 dice:', error);
-            console.error('Error details:', error.message, error.stack);
             this.container.empty();
             const fallback = this.container.createDiv({ cls: 'dice-render-error' });
             fallback.createSpan({ text: '3D rendering not available' });
-            fallback.createEl('small', { text: `Error: ${error.message}` });
+            const message = error instanceof Error ? error.message : String(error);
+            fallback.createEl('small', { text: `Error: ${message}` });
         }
     }
 
@@ -584,7 +585,7 @@ export class D20Dice {
         if (cached) return cached;
 
         const size = BLOB_TEXTURE_SIZE;
-        const canvas = document.createElement('canvas');
+        const canvas = createEl('canvas');
         canvas.width = canvas.height = size;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('blob shadow: no 2d context');
@@ -730,7 +731,7 @@ export class D20Dice {
         return;
 
         // Create a basic fallback material with all configured properties
-        const fallbackMaterialProps: any = {
+        const fallbackMaterialProps: THREE.MeshPhongMaterialParameters = {
             color: this.colorFor(this.settings.diceType),
             ...this.packFinish()
         };
@@ -870,8 +871,8 @@ export class D20Dice {
         const padding = 0.02;
 
         // Group triangles by face based on normals
-        const faceGroups = [];
-        const faceNormals = [];
+        const faceGroups: number[][] = [];
+        const faceNormals: THREE.Vector3[] = [];
 
         for (let i = 0; i < totalTriangles; i++) {
             const vertexOffset = i * 3;
@@ -963,7 +964,7 @@ export class D20Dice {
 
             // Define the 4 vertices of the kite shape (top 80%, bottom 20%)
             const kiteCenter = cellTop + (cellBottom - cellTop) * 0.8; // 80% down from top
-            let kiteVertices;
+            let kiteVertices: Array<{ x: number; y: number }>;
 
 
             // Map triangles to the kite
@@ -1154,7 +1155,6 @@ export class D20Dice {
 
             // Calculate cell center and size
             const cellCenterX = (cellLeft + cellRight) / 2;
-            const cellCenterY = (cellTop + cellBottom) / 2;
             const cellW = cellRight - cellLeft;
             const cellH = cellBottom - cellTop;
 
@@ -1367,7 +1367,7 @@ export class D20Dice {
             const pentagonRadius = Math.min(cellW, cellH) * 0.4;
 
             // Generate pentagon vertices: v1 at top, then clockwise v2, v3, v4, v5
-            const pentagonVertices = [];
+            const pentagonVertices: Array<{ x: number; y: number }> = [];
             for (let i = 0; i < 5; i++) {
                 // Start from top (-90°) and go clockwise
                 const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2 + (Math.PI / 5);
@@ -1635,7 +1635,7 @@ export class D20Dice {
             pulled.push(moved);
 
             for (let v = 0; v < perFace; v++) {
-                const to = moved.get(cornerOf[base + v])!;
+                const to = moved.get(cornerOf[base + v]);
                 positions[(base + v) * 3] = to.x;
                 positions[(base + v) * 3 + 1] = to.y;
                 positions[(base + v) * 3 + 2] = to.z;
@@ -1685,17 +1685,17 @@ export class D20Dice {
                 const to = round[(i + 1) % round.length];
                 const key = from < to ? `${from}:${to}` : `${to}:${from}`;
                 if (!edges.has(key)) edges.set(key, []);
-                edges.get(key)!.push({ face, from, to });
+                edges.get(key).push({ face, from, to });
             }
         }
         for (const [, sides] of edges) {
             if (sides.length !== 2) continue;
             const [a, b] = sides;
             patch([
-                pulled[a.face].get(a.from)!,
-                pulled[a.face].get(a.to)!,
-                pulled[b.face].get(a.to)!,
-                pulled[b.face].get(a.from)!
+                pulled[a.face].get(a.from),
+                pulled[a.face].get(a.to),
+                pulled[b.face].get(a.to),
+                pulled[b.face].get(a.from)
             ]);
         }
 
@@ -1949,7 +1949,7 @@ export class D20Dice {
         const at = (p: [number, number] | THREE.Vector3) =>
             Array.isArray(p) ? new THREE.Vector3(p[0], p[1], 0) : p;
         const centre = points
-            .reduce((sum, p) => sum.add(at(p).clone()), new THREE.Vector3())
+            .reduce<THREE.Vector3>((sum, p) => sum.add(at(p).clone()), new THREE.Vector3())
             .divideScalar(points.length);
         const spans = points.map((p) => at(p).distanceTo(centre));
         const sorted = spans.slice().sort((a, b) => b - a);
@@ -2106,7 +2106,7 @@ export class D20Dice {
     private createMaterialForDiceType(diceType: string, colorOverride: string | null = null): THREE.MeshPhongMaterial {
         // A die added in a colour of its own wears it in place of the pack's.
         const dieColor = colorOverride ?? this.colorFor(diceType);
-        const materialProps: any = {
+        const materialProps: THREE.MeshPhongMaterialParameters = {
             color: dieColor,
             ...this.packFinish()
         };
@@ -2194,7 +2194,7 @@ export class D20Dice {
     ): void {
         if (!rimUV) return;
 
-        const scratch = document.createElement('canvas');
+        const scratch = createEl('canvas');
         scratch.width = img.width;
         scratch.height = img.height;
         const sheet = scratch.getContext('2d', { willReadFrequently: true });
@@ -2263,7 +2263,7 @@ export class D20Dice {
         const cached = this.textureCache.get(key);
         if (cached) return cached;
 
-        const canvas = document.createElement('canvas');
+        const canvas = createEl('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) return this.loadCachedTexture(textureData, 'dice texture');
 
@@ -2392,7 +2392,7 @@ export class D20Dice {
 
             default:
                 // Fallback to sphere for unknown dice types
-                console.warn(`Unknown dice type ${diceType}, using sphere shape`);
+                log(`Unknown dice type ${diceType}, using sphere shape`);
                 shape = new CANNON.Sphere(size);
         }
 
@@ -2459,7 +2459,7 @@ export class D20Dice {
         this.originalMaterials.clear();
 
         for (const type of Object.keys(this.settings.diceCounts)) {
-            (this.settings.diceCounts as any)[type] = 0;
+            (this.settings.diceCounts as Record<string, number>)[type] = 0;
         }
 
         this.wake();
@@ -2531,20 +2531,20 @@ export class D20Dice {
             this.completeSingleDiceRoll(diceIndex);
         } else {
             // Check again in 100ms
-            setTimeout(() => this.checkSingleDiceSettling(diceIndex), 100);
+            window.setTimeout(() => this.checkSingleDiceSettling(diceIndex), 100);
         }
     }
 
     private completeSingleDiceRoll(diceIndex: number): void {
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
 
         const diceType = this.diceTypeArray[diceIndex];
 
         // Wait 2 seconds before checking result to match multi-dice behavior
-        setTimeout(() => {
+        window.setTimeout(() => {
             // Check if dice can be properly detected
             const checkResult = this.checkDiceResult(diceIndex);
 
@@ -2606,14 +2606,14 @@ export class D20Dice {
             this.completeMultiRoll();
         } else {
             // Check again in 100ms
-            setTimeout(() => this.checkMultiDiceSettling(), 100);
+            window.setTimeout(() => this.checkMultiDiceSettling(), 100);
         }
     }
 
     private completeMultiRoll(): void {
         // Clear timeout if it exists
         if (this.rollTimeoutId) {
-            clearTimeout(this.rollTimeoutId);
+            window.clearTimeout(this.rollTimeoutId);
             this.rollTimeoutId = null;
         }
 
@@ -2643,7 +2643,7 @@ export class D20Dice {
 
         this.isRolling = false;
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
 
@@ -2733,7 +2733,7 @@ export class D20Dice {
             return this.getRandomResultForDiceType(this.diceTypeArray[diceIndex]);
         }
 
-        return checkResult.result!;
+        return checkResult.result;
     }
 
     /**
@@ -2798,7 +2798,7 @@ export class D20Dice {
         if (this.packDie(diceType).faces) return this.deriveFaceNormalsFromGeometry(diceType);
 
         switch (diceType) {
-            case 'd4':
+            case 'd4': {
                 // THREE.js TetrahedronGeometry creates a regular tetrahedron with vertices:
                 // v0: (1, 1, 1), v1: (-1, -1, 1), v2: (-1, 1, -1), v3: (1, -1, -1)
                 // Center is at (0, 0, 0)
@@ -2848,6 +2848,7 @@ export class D20Dice {
                 if (n3.dot(face3Center.clone().sub(center)) < 0) n3.negate();
 
                 return [n0, n1, n2, n3];
+            }
 
             case 'd6':
                 // Box/Cube face normals
@@ -2860,7 +2861,7 @@ export class D20Dice {
                     new THREE.Vector3(0, 0, -1)   // Back
                 ];
 
-            case 'd8':
+            case 'd8': {
                 // Octahedron face normals
                 const oct = 1 / Math.sqrt(3);
                 return [
@@ -2873,8 +2874,9 @@ export class D20Dice {
                     new THREE.Vector3(-oct, -oct, -oct),
                     new THREE.Vector3(oct, -oct, -oct)
                 ];
+            }
 
-            case 'd10':
+            case 'd10': {
                 // D10 face normals (kite-shaped faces)
                 const normals: THREE.Vector3[] = [];
                 for (let i = 0; i < 10; i++) {
@@ -2887,8 +2889,9 @@ export class D20Dice {
                     normals.push(normal);
                 }
                 return normals;
+            }
 
-            case 'd12':
+            case 'd12': {
                 // Dodecahedron face normals (12 pentagonal faces)
                 const phi = (1 + Math.sqrt(5)) / 2;
                 const invPhi = 1 / phi;
@@ -2906,8 +2909,9 @@ export class D20Dice {
                     new THREE.Vector3(-invPhi, 0, -phi).normalize(),
                     new THREE.Vector3(0, -phi, invPhi).normalize()
                 ];
+            }
 
-            case 'd20':
+            case 'd20': {
                 // Icosahedron face normals (20 triangular faces)
                 const t = (1 + Math.sqrt(5)) / 2;
                 const vertices = [
@@ -2932,9 +2936,10 @@ export class D20Dice {
                     const edge2 = v3.clone().sub(v1);
                     return edge1.cross(edge2).normalize();
                 });
+            }
 
             default:
-                console.warn(`Unknown dice type ${diceType}, using default normals`);
+                log(`Unknown dice type ${diceType}, using default normals`);
                 return [new THREE.Vector3(0, 1, 0)];
         }
     }
@@ -3070,7 +3075,6 @@ export class D20Dice {
 
         this.faceNormals = [];
         const positionAttribute = this.diceGeometry.attributes.position;
-        const faceCount = this.getFaceCount();
 
         // Handle different dice types
         switch (this.settings.diceType) {
@@ -3088,7 +3092,7 @@ export class D20Dice {
                 this.calculateDodecahedronFaceNormals();
                 break;
 
-            default:
+            default: {
                 // For other dice (d4, d8, d20), use triangle-based calculation
                 const triangleCount = positionAttribute.count / 3;
 
@@ -3110,6 +3114,7 @@ export class D20Dice {
                     this.faceNormals.push(normal);
                 }
                 break;
+            }
         }
 
         log(`✅ Calculated ${this.faceNormals.length} face normals for ${this.settings.diceType}`);
@@ -3256,7 +3261,7 @@ export class D20Dice {
         }
 
         // Create material with all configurable properties
-        const materialProperties: any = {
+        const materialProperties: THREE.MeshPhongMaterialParameters = {
             // Textured dice carry their colour in the composite instead; see
             // loadTextureFromData.
             color: customTexture ? 0xffffff : this.colorFor(this.settings.diceType),
@@ -3283,7 +3288,7 @@ export class D20Dice {
 
     // Method to generate UV mapping template (for development/reference)
     public generateUVTemplate(): string {
-        const canvas = document.createElement('canvas');
+        const canvas = createEl('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) return '';
 
@@ -3384,7 +3389,7 @@ export class D20Dice {
         ];
 
         log('🎲 D20 Face-to-Color Mapping:');
-        console.table(colorMapping);
+        log(colorMapping);
     }
 
     private getCurrentDiceTextureData(): string | null {
@@ -3511,8 +3516,8 @@ export class D20Dice {
         canvas.addEventListener('touchmove', (event) => this.onTouchMove(event));
         canvas.addEventListener('touchend', (event) => this.onTouchEnd(event));
 
-        // Clicks reach the note everywhere except on a die. See trackPointer().
-        canvas.style.pointerEvents = 'none';
+        // Clicks reach the note everywhere except on a die: the canvas starts
+        // at pointer-events: none (styles.css). See trackPointer().
         document.addEventListener('mousemove', this.trackPointer, true);
     }
 
@@ -3527,7 +3532,7 @@ export class D20Dice {
     private setCursor(value: string): void {
         if (this.currentCursor === value) return;
         this.currentCursor = value;
-        this.renderer.domElement.style.cursor = value;
+        this.renderer.domElement.setCssStyles({ cursor: value });
     }
 
     private updateMousePosition(clientX: number, clientY: number) {
@@ -3564,11 +3569,12 @@ export class D20Dice {
         // A drag holds the canvas open. The pointer can outrun the hit radius,
         // and losing the canvas mid-drag would drop the die.
         this.isHoveringDice = this.pickDiceIndex(event.clientX, event.clientY) !== -1;
-        const wanted = this.isDragging || this.isHoveringDice ? 'auto' : 'none';
+        const wanted = this.isDragging || this.isHoveringDice;
 
+        // `is-over-die` switches the canvas to pointer-events: auto (styles.css).
         const canvas = this.renderer.domElement;
-        if (canvas.style.pointerEvents !== wanted) canvas.style.pointerEvents = wanted;
-        if (wanted === 'auto') this.setCursor(this.isHoveringDice ? 'grab' : 'default');
+        if (canvas.hasClass('is-over-die') !== wanted) canvas.toggleClass('is-over-die', wanted);
+        if (wanted) this.setCursor(this.isHoveringDice ? 'grab' : 'default');
     };
 
     private pickDiceIndex(clientX: number, clientY: number): number {
@@ -3773,7 +3779,7 @@ export class D20Dice {
         // Dispose geometry and material
         this.diceArray[index].geometry.dispose();
         if (this.diceArray[index].material && !Array.isArray(this.diceArray[index].material)) {
-            (this.diceArray[index].material as THREE.Material).dispose();
+            (this.diceArray[index].material).dispose();
         }
 
         // Remove from arrays
@@ -3783,7 +3789,7 @@ export class D20Dice {
         this.diceColorArray.splice(index, 1);
 
         // Update dice count in settings
-        (this.settings.diceCounts as any)[diceType]--;
+        (this.settings.diceCounts as Record<string, number>)[diceType]--;
 
         this.wake();
     }
@@ -3816,7 +3822,7 @@ export class D20Dice {
 
         // Stop any current rolling
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
         this.isRolling = false;
@@ -3841,7 +3847,7 @@ export class D20Dice {
 
         // Stop any current rolling
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
         this.isRolling = false;
@@ -3951,7 +3957,7 @@ export class D20Dice {
                 const body = this.diceBodyArray[i];
                 const mesh = this.diceArray[i];
 
-                body.position.copy(worldPosition);
+                body.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
 
                 // Add slight spread to prevent overlapping
                 const spread = this.dragSpread();
@@ -3971,7 +3977,7 @@ export class D20Dice {
             const body = this.diceBodyArray[this.draggedDiceIndex];
             const mesh = this.diceArray[this.draggedDiceIndex];
 
-            body.position.copy(worldPosition);
+            body.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
 
             // Add rolling animation while dragging
             if (spin) {
@@ -4078,7 +4084,7 @@ export class D20Dice {
                     // The force-stop timeout would report this throw a second
                     // time, with whatever faces are up by then.
                     if (this.rollTimeout) {
-                        clearTimeout(this.rollTimeout);
+                        window.clearTimeout(this.rollTimeout);
                         this.rollTimeout = null;
                     }
                     // On completion, trigger callback
@@ -4100,7 +4106,7 @@ export class D20Dice {
 
         this.wake();
 
-        this.rollTimeout = setTimeout(() => {
+        this.rollTimeout = window.setTimeout(() => {
             if (rollingSingleDice) {
                 this.completeSingleDiceRoll(rolledDiceIndex);
             } else {
@@ -4111,7 +4117,7 @@ export class D20Dice {
 
     private forceStop() {
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
 
@@ -4134,7 +4140,7 @@ export class D20Dice {
         this.needsRender = true;
         if (this.animationId === null && this.isViewActive && this.renderer) {
             this.lastFrameTime = 0;
-            this.animationId = requestAnimationFrame(this.animateBound);
+            this.animationId = window.requestAnimationFrame(this.animateBound);
         }
     }
 
@@ -4145,13 +4151,13 @@ export class D20Dice {
                 const dice = this.diceArray[i];
                 const body = this.diceBodyArray[i];
                 if (!dice || !body) continue;
-                dice.position.copy(body.position as any);
+                dice.position.set(body.position.x, body.position.y, body.position.z);
                 // updateDicePosition() spins the held die by hand; copying the
                 // body quaternion over it would erase that spin every frame.
                 const isHeld = this.isDragging &&
                     (this.draggedDiceIndex === -1 || this.draggedDiceIndex === i);
                 if (!isHeld) {
-                    dice.quaternion.copy(body.quaternion as any);
+                    dice.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                 }
             }
         }
@@ -4211,7 +4217,7 @@ export class D20Dice {
 
         // Nothing moving and nothing pending: let the loop die.
         const keepGoing = anyAwake || this.showingResult || this.needsRender || this.isDragging;
-        this.animationId = keepGoing ? requestAnimationFrame(this.animateBound) : null;
+        this.animationId = keepGoing ? window.requestAnimationFrame(this.animateBound) : null;
         if (!keepGoing) {
             this.lastFrameTime = 0;
         }
@@ -4222,7 +4228,7 @@ export class D20Dice {
 
     private rollResolve: ((value: number) => void) | null = null;
     private multiRollResolve: ((value: string) => void) | null = null;
-    private rollTimeoutId: NodeJS.Timeout | null = null;
+    private rollTimeoutId: number | null = null;
     private showingResult = false;
 
     private calculateResult(): void {
@@ -4275,7 +4281,7 @@ export class D20Dice {
             log(`Using calibrated rotation for face ${targetFaceNumber}:`, targetRotation);
             return targetRotation;
         } else {
-            console.warn(`No calibrated rotation found for face ${targetFaceNumber}, using default`);
+            log(`No calibrated rotation found for face ${targetFaceNumber}, using default`);
             return new THREE.Euler(0, 0, 0);
         }
     }
@@ -4389,7 +4395,7 @@ export class D20Dice {
         distances.sort((a, b) => a.distance - b.distance);
 
         log('Current rotation vs all calibrated face rotations:');
-        console.table(distances.map(d => ({
+        log(distances.map(d => ({
             Face: d.face,
             Distance: parseFloat(d.distance.toFixed(3)),
             'Target Euler X': faceRotations[d.face].x.toFixed(2),
@@ -4431,7 +4437,7 @@ export class D20Dice {
     private getTopFaceNumber(): number {
         try {
             if (this.faceNormals.length === 0) {
-                console.warn('Face normals not calculated, falling back to random');
+                log('Face normals not calculated, falling back to random');
                 const faceCount = this.getFaceCount();
                 return Math.floor(Math.random() * faceCount) + 1;
             }
@@ -4505,8 +4511,8 @@ export class D20Dice {
             // Warn if no face is clearly detected
             const detectionType = this.settings.diceType === 'd4' ? 'down' : 'up';
             if (bestDotProduct < minDotProduct) {
-                console.warn(`⚠️ No face is clearly pointing ${detectionType}! Best dot product: ${bestDotProduct.toFixed(3)} (threshold: ${minDotProduct.toFixed(3)})`);
-                console.warn('Dice may still be moving or in an edge case orientation');
+                log(`⚠️ No face is clearly pointing ${detectionType}! Best dot product: ${bestDotProduct.toFixed(3)} (threshold: ${minDotProduct.toFixed(3)})`);
+                log('Dice may still be moving or in an edge case orientation');
             }
 
             return bestFace;
@@ -4648,14 +4654,9 @@ export class D20Dice {
         // display for dice about a hundred pixels across.
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
-        // Set canvas to fill container completely without any constraints
-        const canvas = this.renderer.domElement;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-        canvas.style.display = 'block';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
+        // Set canvas to fill container completely without any constraints;
+        // its position and display come from .dice-canvas in styles.css.
+        this.renderer.domElement.setCssStyles({ width: `${width}px`, height: `${height}px` });
 
         // Update orthographic camera frustum to match the exact window dimensions
         const aspect = width / height;
@@ -4751,7 +4752,7 @@ export class D20Dice {
         }
 
         if (this.rollTimeout) {
-            clearTimeout(this.rollTimeout);
+            window.clearTimeout(this.rollTimeout);
         }
 
         // Clean up hover circle
@@ -4763,14 +4764,13 @@ export class D20Dice {
 
         // Remove event listeners
         if (this.renderer) {
-            const canvas = this.renderer.domElement;
 
             this.container.removeChild(this.renderer.domElement);
             this.renderer.dispose();
 
             const gl = this.renderer.getContext();
             if (gl && gl.getExtension('WEBGL_lose_context')) {
-                gl.getExtension('WEBGL_lose_context')!.loseContext();
+                gl.getExtension('WEBGL_lose_context').loseContext();
             }
         }
 
@@ -4917,7 +4917,7 @@ export class D20Dice {
 
             } catch (error) {
                 console.error('Roll error:', error);
-                reject(error);
+                reject(error instanceof Error ? error : new Error(String(error)));
             }
         });
     }
@@ -4988,7 +4988,7 @@ export class D20Dice {
         this.wake();
     }
 
-    private startIndividualDiceMonitoring(resolve: (value: string) => void, reject: (reason?: any) => void) {
+    private startIndividualDiceMonitoring(resolve: (value: string) => void, reject: (reason?: unknown) => void) {
         const startTime = Date.now();
         const maxWaitTime = 15000; // Maximum 15 seconds
         const checkInterval = 100; // Check every 100ms
@@ -5005,7 +5005,6 @@ export class D20Dice {
 
                 const now = Date.now();
                 let allComplete = true;
-                let statusUpdate = '';
 
                 // Check each die individually
                 for (let i = 0; i < this.diceStates.length; i++) {
@@ -5085,11 +5084,9 @@ export class D20Dice {
                 }
 
                 // Update status
-                const completed = this.diceStates.filter(d => d.isComplete).length;
                 const caught = this.diceStates.filter(d => d.isCaught && !d.isComplete).length;
                 const rolling = this.diceStates.filter(d => d.isRolling && !d.isCaught && !d.isComplete).length;
 
-                statusUpdate = `Rolling: ${rolling}, Caught: ${caught}, Complete: ${completed}/${this.diceStates.length}`;
 
 
                 // If there are caught dice, DON'T show results yet - wait for reroll
@@ -5097,7 +5094,7 @@ export class D20Dice {
                     // All dice have settled, but some are caught - wait for user to reroll
                     // Continue monitoring but don't resolve (only if view is still active)
                     if (this.isViewActive) {
-                        setTimeout(monitor, checkInterval);
+                        window.setTimeout(monitor, checkInterval);
                     } else {
                         log('🛑 Monitoring stopped - view is no longer active');
                         this.currentMonitor = null;
@@ -5110,14 +5107,14 @@ export class D20Dice {
                 if (allComplete && caught === 0) {
                     // All dice have valid results - show final result
                     const results = this.diceStates.map(d => d.result).filter(r => r !== null);
-                    const total = results.reduce((sum, val) => sum + val!, 0);
+                    const total = results.reduce((sum, val) => sum + val, 0);
 
                     const breakdown = this.diceStates
                         .map((state, i) => `${state.type}=${state.result}`)
                         .join(' + ');
 
                     const resultString = `${breakdown} = ${total}`;
-                    this.lastRoll = this.diceStates.map(state => ({ type: state.type, value: state.result!, index: state.index }));
+                    this.lastRoll = this.diceStates.map(state => ({ type: state.type, value: state.result, index: state.index }));
                     log(`🏆 All dice complete! Result: ${resultString}`);
 
                     // Clear monitoring state
@@ -5159,7 +5156,7 @@ export class D20Dice {
 
                 // Continue monitoring (only if view is still active)
                 if (this.isViewActive) {
-                    setTimeout(monitor, checkInterval);
+                    window.setTimeout(monitor, checkInterval);
                 } else {
                     log('🛑 Monitoring stopped - view is no longer active');
                     this.currentMonitor = null;

@@ -52,7 +52,6 @@
     position: absolute;
     bottom: 70px;
     left: 50%;
-    transform: translateX(-50%);
     font-size: 24px;
     font-weight: bold;
     text-align: center;
@@ -124,22 +123,24 @@
     overflow: hidden;
 }
 
-.dice-floating-container canvas {
-    pointer-events: auto; /* Always capture events for dice detection */
-    background: transparent !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    display: block !important;
-    border: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    cursor: default !important;
+/* The dice canvas. Click-through until the pointer is over a die, when the
+   plugin adds .is-over-die; the cursor it sets inline (grab / grabbing). */
+.dice-floating-overlay .dice-floating-container canvas.dice-canvas {
+    pointer-events: none;
+    background: transparent;
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    border: none;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    cursor: default;
 }
 
-.dice-floating-container canvas.dice-interactive {
-    cursor: grab !important; /* Show grab cursor when over dice */
+.dice-floating-overlay .dice-floating-container canvas.dice-canvas.is-over-die {
+    pointer-events: auto;
 }
 
 
@@ -227,6 +228,10 @@
     color: var(--text-muted);
     cursor: grab;
     user-select: none;
+}
+
+.dice-controls-drag-handle.is-dragging {
+    cursor: grabbing;
 }
 
 .dice-controls-drag-handle:hover {
