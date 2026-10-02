@@ -521,6 +521,31 @@ export class ButtonComponent extends BaseComponent {
     }
 }
 
+/** An icon button beside a setting's controls. */
+export class ExtraButtonComponent extends BaseComponent {
+    extraSettingsEl: HTMLElement;
+
+    constructor(containerEl: HTMLElement) {
+        super();
+        this.extraSettingsEl = document.createElement('button');
+        this.extraSettingsEl.classList.add('clickable-icon', 'extra-setting-button');
+        containerEl.appendChild(this.extraSettingsEl);
+    }
+
+    setIcon(icon: string): this {
+        setIcon(this.extraSettingsEl, icon);
+        return this;
+    }
+    setTooltip(tooltip: string): this {
+        this.extraSettingsEl.setAttribute('aria-label', tooltip);
+        return this;
+    }
+    onClick(handler: () => any): this {
+        this.extraSettingsEl.addEventListener('click', () => handler());
+        return this;
+    }
+}
+
 export class DropdownComponent extends BaseComponent {
     selectEl: HTMLSelectElement;
     private handler: ((value: string) => any) | null = null;
@@ -629,6 +654,10 @@ export class Setting {
         cb(new ButtonComponent(this.controlEl));
         return this;
     }
+    addExtraButton(cb: (component: ExtraButtonComponent) => any): this {
+        cb(new ExtraButtonComponent(this.controlEl));
+        return this;
+    }
     addDropdown(cb: (component: DropdownComponent) => any): this {
         cb(new DropdownComponent(this.controlEl));
         return this;
@@ -709,4 +738,83 @@ export const Platform = {
 
 export function setIcon(el: HTMLElement, icon: string): void {
     el.setAttribute('data-icon', icon);
+}
+
+/** A menu item, as Menu.addItem hands it over. */
+export class MenuItem {
+    dom: HTMLElement;
+    iconEl: HTMLElement;
+    private titleEl: HTMLElement;
+    private handler: (() => any) | null = null;
+    disabled = false;
+
+    constructor() {
+        this.dom = document.createElement('div');
+        this.dom.className = 'menu-item';
+        this.iconEl = document.createElement('span');
+        this.iconEl.className = 'menu-item-icon';
+        this.titleEl = document.createElement('span');
+        this.titleEl.className = 'menu-item-title';
+        this.dom.append(this.iconEl, this.titleEl);
+        this.dom.addEventListener('click', () => {
+            if (!this.disabled) this.handler?.();
+            this.dom.closest('.menu')?.remove();
+        });
+    }
+
+    setTitle(title: string): this {
+        this.titleEl.textContent = title;
+        return this;
+    }
+    setIcon(icon: string): this {
+        setIcon(this.iconEl, icon);
+        return this;
+    }
+    setDisabled(disabled: boolean): this {
+        this.disabled = disabled;
+        this.dom.classList.toggle('is-disabled', disabled);
+        return this;
+    }
+    onClick(handler: () => any): this {
+        this.handler = handler;
+        return this;
+    }
+}
+
+/** A context menu: a list of items shown at the pointer, gone after a pick. */
+export class Menu {
+    dom: HTMLElement;
+
+    constructor() {
+        this.dom = document.createElement('div');
+        this.dom.className = 'menu';
+        this.dom.style.cssText = 'position:fixed;z-index:10000;background:var(--background-primary);border:1px solid var(--background-modifier-border);padding:4px;border-radius:8px;';
+    }
+
+    addItem(cb: (item: MenuItem) => any): this {
+        const item = new MenuItem();
+        cb(item);
+        this.dom.appendChild(item.dom);
+        return this;
+    }
+    addSeparator(): this {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        this.dom.appendChild(separator);
+        return this;
+    }
+    showAtMouseEvent(event: MouseEvent): this {
+        return this.showAtPosition({ x: event.clientX, y: event.clientY });
+    }
+    showAtPosition(position: { x: number; y: number }): this {
+        document.querySelectorAll('.menu').forEach((menu) => menu.remove());
+        this.dom.style.left = `${position.x}px`;
+        this.dom.style.top = `${position.y}px`;
+        document.body.appendChild(this.dom);
+        return this;
+    }
+    hide(): this {
+        this.dom.remove();
+        return this;
+    }
 }

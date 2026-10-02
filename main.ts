@@ -1,6 +1,6 @@
 import { Plugin, Notice, debounce, setIcon, Platform, FileSystemAdapter } from 'obsidian';
-import { D20Dice, DicePack } from './d20-dice';
-import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab } from './settings';
+import { D20Dice, DicePack, type RolledDie } from './d20-dice';
+import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab, type DiceColor } from './settings';
 import { sendRollToAtlas } from './atlas-bridge';
 import { appendDiceIcon } from './dice-icons';
 import { ensureDefaultPack } from './default-pack';
@@ -9,6 +9,8 @@ export default class D20DicePlugin extends Plugin {
     settings: DiceSettings;
     private diceOverlay: HTMLElement | null = null;
     private dice: D20Dice | null = null;
+    /** Closes the column of colours a right-click opened over a die, when one is showing. */
+    private closeColorPicker: (() => void) | null = null;
     private isVisible = false;
     private controlsPanel: HTMLElement | null = null;
     private isDraggingControls = false;
@@ -153,53 +155,59 @@ export default class D20DicePlugin extends Plugin {
             rollButton.disabled = totalDice === 0;
         };
 
+        const addDie = async (type: string, color: string | null, button: HTMLElement): Promise<void> => {
+            const totalDice = Object.values(this.settings.diceCounts).reduce((sum, count) => sum + count, 0);
+            if (totalDice >= 50) {
+                new Notice('The tray holds at most 50 dice');
+                button.addClass('is-at-limit');
+                setTimeout(() => button.removeClass('is-at-limit'), 1500);
+                return;
+            }
+            (this.settings.diceCounts as Record<string, number>)[type]++;
+            this.dice?.createSingleDice(type, color);
+            updateDiceCountDisplay();
+            this.refreshDiceView();
+            await this.saveSettings();
+        };
+
+        const removeDie = async (type: string): Promise<void> => {
+            const counts = this.settings.diceCounts as Record<string, number>;
+            if (!counts[type]) return;
+            // The roll in flight tracks its dice by position.
+            if (this.dice?.rollInProgress) {
+                new Notice('Wait for the roll to finish');
+                return;
+            }
+            if (this.dice && !this.dice.removeSingleDice(type)) return;
+            counts[type]--;
+            updateDiceCountDisplay();
+            this.refreshDiceView();
+            await this.saveSettings();
+        };
+
         diceTypes.forEach(type => {
             // As in Atlas: the die's glyph on the button, its name underneath.
             const cell = diceButtonsContainer.createDiv('dice-type-cell');
             const button = cell.createEl('button', {
                 cls: 'dice-type-button',
-                attr: { 'aria-label': `${type}: click to add, right-click to remove`, 'data-die': type }
+                attr: { 'aria-label': `${type}: click to add, right-click for colours`, 'data-die': type }
             });
             appendDiceIcon(button, type);
             badges.set(type, button.createSpan('dice-type-badge'));
             typeButtons.set(type, button);
             cell.createSpan({ cls: 'dice-type-name', text: type });
 
-            button.addEventListener('contextmenu', async (event) => {
+            // Click: a die in the pack's colour. Right-click: a column of the dice
+            // colours over the button, each adding it in that colour; with no
+            // colours set up, right-click removes one.
+            button.addEventListener('click', () => void addDie(type, null, button));
+            button.addEventListener('contextmenu', (event) => {
                 event.preventDefault();
-                const counts = this.settings.diceCounts as Record<string, number>;
-                if (!counts[type]) return;
-                // The roll in flight tracks its dice by position.
-                if (this.dice?.rollInProgress) {
-                    new Notice('Wait for the roll to finish');
+                if (this.settings.diceColors.length === 0) {
+                    void removeDie(type);
                     return;
                 }
-                counts[type]--;
-                await this.saveSettings();
-                this.dice?.removeSingleDice(type);
-                updateDiceCountDisplay();
-                this.refreshDiceView();
-            });
-
-            button.addEventListener('click', async () => {
-                const totalDice = Object.values(this.settings.diceCounts).reduce((sum, count) => sum + count, 0);
-                if (totalDice >= 50) {
-                    new Notice('The tray holds at most 50 dice');
-                    button.addClass('is-at-limit');
-                    setTimeout(() => button.removeClass('is-at-limit'), 1500);
-                    return;
-                }
-
-                (this.settings.diceCounts as any)[type]++;
-                await this.saveSettings();
-
-                // Create the actual dice in the 3D scene
-                if (this.dice) {
-                    this.dice.createSingleDice(type);
-                }
-
-                updateDiceCountDisplay();
-                this.refreshDiceView();
+                this.showColorPicker(type, button, (color) => void addDie(type, color, button));
             });
         });
         updateDiceCountDisplay();
@@ -249,8 +257,7 @@ export default class D20DicePlugin extends Plugin {
 
         // Set up callback for drag-based rolls (now expects string)
         this.dice.onRollComplete = (result: number | string) => {
-            this.showResult(result, resultElement);
-            this.handleRollComplete();
+            this.handleRollComplete(result, resultElement);
         };
 
         // Set up dice status monitoring. The handle lives on the plugin so that
@@ -297,8 +304,7 @@ export default class D20DicePlugin extends Plugin {
 
             try {
                 const result = await this.dice!.roll();
-                this.showResult(result, resultElement);
-                this.handleRollComplete();
+                this.handleRollComplete(result, resultElement);
                 statusElement.textContent = 'Roll complete!';
                 rerollButton.hide();
 
@@ -489,7 +495,43 @@ export default class D20DicePlugin extends Plugin {
         this.dice.updateSize(rect.width, rect.height);
     }
 
+    /**
+     * A column of the dice colours rising from `button`, over the panel. It stays
+     * open for adding several dice, and closes on a click elsewhere or Escape.
+     */
+    private showColorPicker(type: string, button: HTMLElement, onPick: (color: string) => void): void {
+        this.closeColorPicker?.();
+        const rect = button.getBoundingClientRect();
+        const picker = document.body.createDiv({ cls: 'dice-color-picker', attr: { role: 'group', 'aria-label': `Add a ${type} in a colour` } });
+        picker.style.left = `${rect.left + rect.width / 2}px`;
+        picker.style.top = `${rect.top}px`;
+
+        for (const entry of this.settings.diceColors) {
+            const circle = picker.createEl('button', {
+                cls: 'dice-color-circle',
+                attr: { 'aria-label': `${entry.name || entry.color} ${type}` }
+            });
+            circle.style.setProperty('--dice-swatch', entry.color);
+            circle.addEventListener('click', () => onPick(entry.color));
+        }
+
+        const close = (event: Event) => {
+            if (event instanceof KeyboardEvent && event.key !== 'Escape') return;
+            if (event.target instanceof Node && picker.contains(event.target)) return;
+            this.closeColorPicker?.();
+        };
+        document.addEventListener('mousedown', close, true);
+        document.addEventListener('keydown', close, true);
+        this.closeColorPicker = () => {
+            document.removeEventListener('mousedown', close, true);
+            document.removeEventListener('keydown', close, true);
+            picker.remove();
+            this.closeColorPicker = null;
+        };
+    }
+
     private hideDiceOverlay() {
+        this.closeColorPicker?.();
         for (const cleanup of this.overlayCleanups) cleanup();
         this.overlayCleanups = [];
 
@@ -660,7 +702,8 @@ export default class D20DicePlugin extends Plugin {
 
         this.settings = Object.assign({}, DEFAULT_SETTINGS, stored, {
             diceCounts: Object.assign({}, DEFAULT_SETTINGS.diceCounts, stored.diceCounts),
-            faceMapping: Object.assign({}, DEFAULT_SETTINGS.faceMapping, stored.faceMapping)
+            faceMapping: Object.assign({}, DEFAULT_SETTINGS.faceMapping, stored.faceMapping),
+            diceColors: Array.isArray(stored.diceColors) ? stored.diceColors.map((c: DiceColor) => ({ ...c })) : []
         });
     }
 
@@ -698,9 +741,30 @@ export default class D20DicePlugin extends Plugin {
     }
 
     /** Every settled roll goes to Atlas VTT: its toast, roll log and player view. */
-    private handleRollComplete(): void {
+    /**
+     * Every settled roll: shown on the panel, naming each die's colour, and
+     * sent to Atlas VTT (its toast, roll log and player view).
+     */
+    private handleRollComplete(result: number | string, resultElement: HTMLElement): void {
         const rolled = this.dice?.takeLastRoll() ?? null;
-        if (rolled) sendRollToAtlas(rolled);
+        this.showResult(rolled ? this.describeRoll(rolled) : result, resultElement);
+        if (rolled) sendRollToAtlas(rolled.map((die) => ({ ...die, colorName: this.colorName(die.color) })));
+    }
+
+    /** `Red d20=14 + d6=3 = 17`: each die, named by its colour when it has one. */
+    private describeRoll(rolled: RolledDie[]): string {
+        const parts = rolled.map((die) => {
+            const name = this.colorName(die.color);
+            return `${name ? `${name} ` : ''}${die.type}=${die.value}`;
+        });
+        const total = rolled.reduce((sum, die) => sum + die.value, 0);
+        return `${parts.join(' + ')} = ${total}`;
+    }
+
+    private colorName(color: string | null | undefined): string | null {
+        if (!color) return null;
+        const match = this.settings.diceColors.find((c) => c.color === color);
+        return match?.name || color;
     }
 
     private updateDiceStatusDisplay(

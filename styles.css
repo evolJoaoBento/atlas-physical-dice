@@ -560,3 +560,46 @@
     font-size: var(--font-ui-smaller);
     margin-top: var(--size-4-1);
 }
+
+/* The colours a right-click shows over a die: a column of circles rising from
+   its button, over the panel. On document.body, so it sets its own values. */
+.dice-color-picker {
+    position: fixed;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    padding: 8px;
+    transform: translate(-50%, calc(-100% - 8px));
+    background: var(--background-primary);
+    border: 1.5px solid color-mix(in oklch, var(--mono-100) 18%, transparent);
+    border-radius: 9999px;
+    box-shadow: var(--shadow-l);
+    animation: dice-color-picker-in 150ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes dice-color-picker-in {
+    from { opacity: 0; transform: translate(-50%, calc(-100% - 8px)) translateY(6px); }
+    to { opacity: 1; transform: translate(-50%, calc(-100% - 8px)); }
+}
+
+.dice-color-picker .dice-color-circle {
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border-radius: 9999px;
+    border: 2px solid var(--background-primary);
+    background: var(--dice-swatch);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--mono-100) 18%, transparent);
+    cursor: pointer;
+    transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.dice-color-picker .dice-color-circle:hover {
+    transform: scale(1.08);
+}
+
+.dice-color-picker .dice-color-circle:active {
+    transform: scale(0.92);
+}

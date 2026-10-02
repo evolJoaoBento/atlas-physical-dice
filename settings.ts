@@ -52,6 +52,17 @@ export interface DiceSettings {
 
     faceMapping: { [faceIndex: number]: number };
 
+    /** Colours dice can be added in, beside the pack's own. */
+    diceColors: DiceColor[];
+
+}
+
+/** A colour dice can be added in: a red set for damage, a blue d20 for advantage. */
+export interface DiceColor {
+    id: string;
+    name: string;
+    /** `#rrggbb` */
+    color: string;
 }
 
 export const DEFAULT_SETTINGS: DiceSettings = {
@@ -111,6 +122,8 @@ export const DEFAULT_SETTINGS: DiceSettings = {
         10: 11, 11: 12, 12: 13, 13: 14, 14: 15, 15: 16, 16: 17, 17: 18, 18: 19, 19: 20
     },
 
+    diceColors: []
+
 };
 
 export class DiceSettingTab extends PluginSettingTab {
@@ -147,6 +160,55 @@ export class DiceSettingTab extends PluginSettingTab {
         const { containerEl } = this;
 
         containerEl.empty();
+
+        // Dice colours section
+        const colorsSection = this.createCollapsibleSection(containerEl, 'Dice colours', 'colors');
+        colorsSection.createEl('p', {
+            cls: 'setting-item-description',
+            text: 'Colours you can add dice in, beside the pack’s own: pick one in the dice panel, then add dice. Each die keeps the colour it was added in, and the roll names it.'
+        });
+
+        this.plugin.settings.diceColors.forEach((entry, index) => {
+            new Setting(colorsSection)
+                .setName(entry.name || `Colour ${index + 1}`)
+                .addText(text => text
+                    .setPlaceholder('Name, e.g. Fire')
+                    .setValue(entry.name)
+                    .onChange(async (value) => {
+                        entry.name = value.trim();
+                        await this.plugin.saveSettings();
+                    }))
+                .addColorPicker(color => color
+                    .setValue(entry.color)
+                    .onChange(async (value) => {
+                        entry.color = value;
+                        await this.plugin.saveSettings();
+                    }))
+                .addExtraButton(button => button
+                    .setIcon('trash-2')
+                    .setTooltip('Remove colour')
+                    .onClick(async () => {
+                        this.plugin.settings.diceColors.splice(index, 1);
+                        await this.plugin.saveSettings();
+                        this.display();
+                    }));
+        });
+
+        new Setting(colorsSection)
+            .addButton(button => button
+                .setButtonText('Add colour')
+                .onClick(async () => {
+                    const palette = ['#d64545', '#3b82f6', '#22a06b', '#e0a526', '#8b5cf6', '#1f2937'];
+                    const used = new Set(this.plugin.settings.diceColors.map((c) => c.color));
+                    const color = palette.find((c) => !used.has(c)) ?? '#ffffff';
+                    this.plugin.settings.diceColors.push({
+                        id: `color-${Date.now().toString(36)}`,
+                        name: '',
+                        color
+                    });
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
 
         // Dice Configuration Section
         const diceSection = this.createCollapsibleSection(containerEl, 'Dice', 'dice');

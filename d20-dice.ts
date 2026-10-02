@@ -242,6 +242,10 @@ const BEVEL_FALLBACK = { enabled: true, depth: 0.1, smooth: 0 };
 export interface RolledDie {
     type: string;
     value: number;
+    /** Position of the die on the table (creation order), when known. */
+    index?: number;
+    /** The colour the die was added in; null wears the pack's. */
+    color?: string | null;
 }
 
 export class D20Dice {
@@ -270,6 +274,8 @@ export class D20Dice {
     private diceArray: THREE.Mesh[] = [];
     private diceBodyArray: CANNON.Body[] = [];
     private diceTypeArray: string[] = [];
+    /** Each die's own colour, index-aligned with diceTypeArray; null wears the pack's. */
+    private diceColorArray: Array<string | null> = [];
     private selectedDice: THREE.Mesh[] = [];
     private draggedDiceIndex = -1;
     private trayBodies: CANNON.Body[] = [];
@@ -449,7 +455,9 @@ export class D20Dice {
 
     private initPhysics() {
         this.world = new CANNON.World();
-        this.world.gravity.set(0, -9.82, 0); // Realistic Earth gravity (9.82 m/s²)
+        // Dice are several world units across, so Earth's 9.82 makes them fall like boulders.
+        // Gravity scaled to their size makes them drop and settle like real dice.
+        this.world.gravity.set(0, -60, 0);
         log(`🌍 Physics world initialized with gravity: ${this.world.gravity.y}`);
 
         // Body.allowSleep defaults to true and every die sets sleepSpeedLimit /
@@ -1460,7 +1468,7 @@ export class D20Dice {
         }
     }
 
-    createSingleDice(diceType: string): void {
+    createSingleDice(diceType: string, color: string | null = null): void {
         // Create geometry based on dice type
         const geometry = this.createGeometryForDiceType(diceType);
 
@@ -1468,7 +1476,7 @@ export class D20Dice {
         this.applyUVMappingForDiceType(geometry, diceType);
 
         // Create material with individual scaling
-        const material = this.createMaterialForDiceType(diceType);
+        const material = this.createMaterialForDiceType(diceType, color);
 
         // Create mesh
         const mesh = new THREE.Mesh(geometry, material);
@@ -1489,6 +1497,7 @@ export class D20Dice {
         this.diceArray.push(mesh);
         this.diceBodyArray.push(body);
         this.diceTypeArray.push(diceType);
+        this.diceColorArray.push(color);
 
         this.wake();
     }
@@ -2094,9 +2103,11 @@ export class D20Dice {
         };
     }
 
-    private createMaterialForDiceType(diceType: string): THREE.MeshPhongMaterial {
+    private createMaterialForDiceType(diceType: string, colorOverride: string | null = null): THREE.MeshPhongMaterial {
+        // A die added in a colour of its own wears it in place of the pack's.
+        const dieColor = colorOverride ?? this.colorFor(diceType);
         const materialProps: any = {
-            color: this.colorFor(diceType),
+            color: dieColor,
             ...this.packFinish()
         };
 
@@ -2105,7 +2116,7 @@ export class D20Dice {
         if (textureData) {
             const texture = this.loadTextureFromData(
                 textureData,
-                this.colorFor(diceType),
+                dieColor,
                 this.packDie(diceType).rimUV || PACK_FALLBACK.rimUV
             );
             if (texture) {
@@ -2292,15 +2303,6 @@ export class D20Dice {
         img.onerror = () => console.warn('Failed to load dice texture');
         img.src = textureData;
 
-        // A die colour change asks for a fresh composite of art already in the
-        // cache; the stale one would otherwise sit there holding a GPU texture
-        // for a colour nothing renders any more.
-        for (const [otherKey, otherTexture] of this.textureCache) {
-            if (otherKey !== key && otherKey.startsWith(`${textureData}|`)) {
-                otherTexture.dispose();
-                this.textureCache.delete(otherKey);
-            }
-        }
         this.textureCache.set(key, texture);
         return texture;
     }
@@ -2447,6 +2449,7 @@ export class D20Dice {
         this.diceArray.length = 0;
         this.diceBodyArray.length = 0;
         this.diceTypeArray.length = 0;
+        this.diceColorArray.length = 0;
         this.selectedDice.length = 0;
         this.draggedDiceIndex = -1;
         this.originalMaterials.forEach((material) => {
@@ -2462,10 +2465,11 @@ export class D20Dice {
         this.wake();
     }
 
-    removeSingleDice(diceType: string): boolean {
+    /** Removes the last die of `diceType`; with `color`, the last one added in that colour. */
+    removeSingleDice(diceType: string, color?: string | null): boolean {
         // Find the last dice of the specified type
         for (let i = this.diceTypeArray.length - 1; i >= 0; i--) {
-            if (this.diceTypeArray[i] === diceType) {
+            if (this.diceTypeArray[i] === diceType && (color === undefined || this.diceColorArray[i] === color)) {
                 // Remove from scene
                 const mesh = this.diceArray[i];
                 this.scene.remove(mesh);
@@ -2482,6 +2486,7 @@ export class D20Dice {
                 this.diceArray.splice(i, 1);
                 this.diceBodyArray.splice(i, 1);
                 this.diceTypeArray.splice(i, 1);
+                this.diceColorArray.splice(i, 1);
 
                 // Update selectedDice array
                 this.selectedDice = this.selectedDice.filter(index => index !== i);
@@ -2554,7 +2559,7 @@ export class D20Dice {
             } else {
                 // Valid result
                 formattedResult = `1${diceType}(${checkResult.result}) = ${checkResult.result}`;
-                this.lastRoll = [{ type: diceType, value: checkResult.result }];
+                this.lastRoll = [{ type: diceType, value: checkResult.result, index: diceIndex }];
                 log(`📊 Single dice roll result: ${formattedResult}`);
             }
 
@@ -2622,7 +2627,7 @@ export class D20Dice {
         for (let i = 0; i < this.diceArray.length; i++) {
             const diceType = this.diceTypeArray[i];
             const result = this.getTopFaceNumberForDice(i);
-            rolled.push({ type: diceType, value: result });
+            rolled.push({ type: diceType, value: result, index: i });
 
             if (!results[diceType]) {
                 results[diceType] = [];
@@ -3775,6 +3780,7 @@ export class D20Dice {
         this.diceArray.splice(index, 1);
         this.diceBodyArray.splice(index, 1);
         this.diceTypeArray.splice(index, 1);
+        this.diceColorArray.splice(index, 1);
 
         // Update dice count in settings
         (this.settings.diceCounts as any)[diceType]--;
@@ -3986,7 +3992,8 @@ export class D20Dice {
         const rollingSingleDice = this.draggedDiceIndex >= 0;
 
         // Use mouse velocity for realistic momentum-based throwing
-        const velocityMultiplier = 50;
+        // Scaled with gravity (about sqrt(60 / 9.82)) so throws keep their reach.
+        const velocityMultiplier = 120;
         const baseThrowForce = new CANNON.Vec3(
             this.mouseVelocity.x * velocityMultiplier,
             -Math.max(Math.abs(this.mouseVelocity.x + this.mouseVelocity.y) * velocityMultiplier * 0.5, 3),
@@ -3994,7 +4001,7 @@ export class D20Dice {
         );
 
         // Cap maximum force to prevent dice from flying too far
-        const maxForce = 25;
+        const maxForce = 60;
         const forceLength = baseThrowForce.length();
         if (forceLength > maxForce) {
             baseThrowForce.scale(maxForce / forceLength, baseThrowForce);
@@ -4182,7 +4189,7 @@ export class D20Dice {
         if (anyAwake) {
             // Passing the real delta and a substep cap decouples the fall speed
             // from the display refresh rate.
-            this.world.step(1 / 60, dt, 2);
+            this.world.step(1 / 120, dt, 8);
 
             // The solver has just applied gravity to the held die and pushed it
             // back out of whatever it was resting against. Drawing that is what
@@ -4697,9 +4704,10 @@ export class D20Dice {
      */
     public rebuildDice(): void {
         const present = this.diceTypeArray.slice();
+        const colors = this.diceColorArray.slice();
         if (!present.length) return;
         this.clearAllDice();
-        for (const type of present) this.createSingleDice(type);
+        present.forEach((type, i) => this.createSingleDice(type, colors[i] ?? null));
         this.wake();
     }
 
@@ -4881,7 +4889,10 @@ export class D20Dice {
     public takeLastRoll(): RolledDie[] | null {
         const roll = this.lastRoll;
         this.lastRoll = null;
-        return roll;
+        return roll?.map((die) => ({
+            ...die,
+            color: die.index !== undefined ? this.diceColorArray[die.index] ?? null : null,
+        })) ?? null;
     }
 
     // Enhanced roll method with individual dice detection
@@ -5106,7 +5117,7 @@ export class D20Dice {
                         .join(' + ');
 
                     const resultString = `${breakdown} = ${total}`;
-                    this.lastRoll = this.diceStates.map(state => ({ type: state.type, value: state.result! }));
+                    this.lastRoll = this.diceStates.map(state => ({ type: state.type, value: state.result!, index: state.index }));
                     log(`🏆 All dice complete! Result: ${resultString}`);
 
                     // Clear monitoring state
@@ -5133,7 +5144,7 @@ export class D20Dice {
                     const breakdown = partialResults
                         .map((result, i) => `${this.diceStates[i].type}=${result}`)
                         .join(' + ');
-                    this.lastRoll = partialResults.map((value, i) => ({ type: this.diceStates[i].type, value }));
+                    this.lastRoll = partialResults.map((value, i) => ({ type: this.diceStates[i].type, value, index: i }));
 
                     // Clear all highlights before resolving
                     this.clearAllHighlights();

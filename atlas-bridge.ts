@@ -15,7 +15,8 @@ interface AtlasDiceRoll {
     id: string;
     timestamp: number;
     formula: string;
-    rolls: Array<{ die: string; value: number; max: number }>;
+    /** `color` and `colorName` are extras: the die's colour, for an Atlas that shows it. */
+    rolls: Array<{ die: string; value: number; max: number; color?: string; colorName?: string }>;
     modifiers: number;
     total: number;
     player?: string;
@@ -39,12 +40,21 @@ function sidesOf(type: string): number {
     return parseInt(type.slice(1), 10) || 0;
 }
 
-export function toAtlasRoll(dice: RolledDie[], now = Date.now()): AtlasDiceRoll {
+/** A settled die, with the name of its colour when it was added in one. */
+export type AtlasRolledDie = RolledDie & { colorName?: string | null };
+
+export function toAtlasRoll(dice: AtlasRolledDie[], now = Date.now()): AtlasDiceRoll {
     return {
         id: `physical_${now}_${Math.random().toString(36).slice(2, 8)}`,
         timestamp: now,
         formula: formulaOf(dice),
-        rolls: dice.map((die) => ({ die: die.type, value: die.value, max: sidesOf(die.type) })),
+        rolls: dice.map((die) => ({
+            die: die.type,
+            value: die.value,
+            max: sidesOf(die.type),
+            ...(die.color ? { color: die.color } : {}),
+            ...(die.colorName ? { colorName: die.colorName } : {}),
+        })),
         modifiers: 0,
         // The same total the overlay shows, so both always agree.
         total: dice.reduce((sum, die) => sum + die.value, 0),
@@ -57,7 +67,7 @@ export function toAtlasRoll(dice: RolledDie[], now = Date.now()): AtlasDiceRoll 
  * Atlas listens on the main window's document, so this deliberately uses
  * `document` rather than `activeDocument`, which is a popout's while it has focus.
  */
-export function sendRollToAtlas(dice: RolledDie[]): void {
+export function sendRollToAtlas(dice: AtlasRolledDie[]): void {
     if (dice.length === 0) return;
     document.dispatchEvent(new CustomEvent(ATLAS_DICE_EVENT, { detail: toAtlasRoll(dice) }));
 }
