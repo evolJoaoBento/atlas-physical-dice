@@ -231,7 +231,8 @@ one depth pass the GPU is built for.
 
 ## Measured in the harness, contradicting note 8
 
-`npm run harness` boots the real plugin in a browser. It found this, and it is
+`npm run harness` (in the upstream obsidian-physical-dice repo, where the harness
+now lives) boots the real plugin in a browser. It found this, and it is
 the reason to distrust the solver-iteration advice below.
 
 **Lowering `world.solver.iterations` stops the dice sleeping at all.**
