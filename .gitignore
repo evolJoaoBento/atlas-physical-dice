@@ -17,11 +17,6 @@ dice-view.js
 settings.js
 textures.json
 
-# harness bundle
-harness/harness.js
-
-# Obsidian's own stylesheet, extracted locally for the harness
-harness/obsidian-app.css
 .claude/
 
 # written by the plugin on load: which release laid out the default pack

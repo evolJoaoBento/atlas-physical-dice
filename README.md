@@ -79,8 +79,10 @@ npm run dev     # watch build
 npm run build   # type-check and production build
 ```
 
-`harness/` drives a real Obsidian over the Chrome DevTools Protocol for
-screenshots and smoke checks; see [harness/README.md](harness/README.md).
+The browser test harness (Chrome DevTools Protocol smoke checks, sheet
+calibration scripts) is not part of the plugin and lives in the upstream
+[obsidian-physical-dice](https://github.com/evolJoaoBento/obsidian-physical-dice)
+repository.
 
 ## Credits
 

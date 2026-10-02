@@ -155,7 +155,9 @@ two match without a pack having to arrange it.
 ## Working them out
 
 Two harness scripts do the tedious part, and both want Obsidian running with the
-plugin's debug port open (see `harness/README.md`):
+plugin's debug port open. They live in the `harness/` folder of the upstream
+[obsidian-physical-dice](https://github.com/evolJoaoBento/obsidian-physical-dice)
+repository (see its `harness/README.md`):
 
 - `harness/scripts/net.js` reads a sheet and hands back every cell's corners.
   Cells are fenced off by the drawn border, so it floods each one, hulls it, and

@@ -482,7 +482,7 @@ export class D20Dice {
         // A body that never sleeps means the render loop never stops, which
         // costs far more than the handful of solver iterations saves. Over
         // three runs each: 2, 4 and 6 iterations settled 1/3, 0/3 and 0/3;
-        // 8 and 10 settled 3/3. Re-run harness/ if you want to change this.
+        // 8 and 10 settled 3/3. Re-run the upstream repo's harness/ if you want to change this.
     }
 
     /**
