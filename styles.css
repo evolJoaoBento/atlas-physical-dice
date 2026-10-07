@@ -608,3 +608,174 @@
 .dice-color-picker .dice-color-circle:active {
     transform: scale(0.92);
 }
+
+/* ---- Atlas VTT: the hidden engine that draws pack previews ---- */
+
+.dice-preview-engine {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 64px;
+    height: 64px;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* ---- Atlas VTT: Dice packs tab in the asset manager ---- */
+
+.apd-dice-packs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-3);
+}
+
+.apd-dice-packs__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-2);
+    flex-wrap: wrap;
+}
+
+.apd-dice-packs__title {
+    margin: 0;
+    font-size: var(--font-ui-large);
+}
+
+.apd-dice-packs__actions {
+    display: flex;
+    gap: var(--size-4-2);
+}
+
+.apd-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+}
+
+.apd-button svg {
+    width: var(--icon-s);
+    height: var(--icon-s);
+}
+
+.apd-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.apd-dice-packs__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--size-4-3);
+}
+
+.apd-dice-pack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-2);
+    padding: var(--size-4-3);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+}
+
+.apd-dice-pack.is-active {
+    border-color: var(--interactive-accent);
+}
+
+.apd-dice-pack__preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    color: var(--text-faint);
+}
+
+.apd-dice-pack__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.apd-dice-pack__preview svg {
+    width: 40%;
+    height: 40%;
+}
+
+.apd-dice-pack__name {
+    font-weight: var(--font-semibold);
+}
+
+.apd-dice-pack__meta {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
+.apd-dice-pack__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    flex-wrap: wrap;
+}
+
+.apd-dice-pack__in-use {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    color: var(--text-accent);
+    font-size: var(--font-ui-small);
+}
+
+.apd-dice-pack__in-use svg {
+    width: var(--icon-s);
+    height: var(--icon-s);
+}
+
+.apd-dice-packs__reset {
+    grid-column: 1 / -1;
+}
+
+/* ---- Atlas VTT: Dice tab in a collection's settings ---- */
+
+.apd-collection-dice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-2);
+}
+
+.apd-field-label {
+    font-weight: var(--font-semibold);
+}
+
+.apd-colour-row {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+}
+
+.apd-colour-swatch {
+    width: 36px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.apd-colour-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.apd-colour-add {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+}
+
+.apd-colour-add svg {
+    width: var(--icon-s);
+    height: var(--icon-s);
+}

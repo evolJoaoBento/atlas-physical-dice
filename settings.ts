@@ -165,7 +165,7 @@ export class DiceSettingTab extends PluginSettingTab {
         const colorsSection = this.createCollapsibleSection(containerEl, 'Dice colours', 'colors');
         colorsSection.createEl('p', {
             cls: 'setting-item-description',
-            text: 'Colours you can add dice in, beside the pack’s own: pick one in the dice panel, then add dice. Each die keeps the colour it was added in, and the roll names it.'
+            text: 'Colours you can add dice in, beside the pack’s own: right-click a die in the dice panel to pick one. Each die keeps the colour it was added in, and the roll names it. With Atlas VTT 1.18 or later, the colours set in the Dice tab of the open map’s collection are offered too.'
         });
 
         this.plugin.settings.diceColors.forEach((entry, index) => {
@@ -243,7 +243,16 @@ export class DiceSettingTab extends PluginSettingTab {
             .addExtraButton(button => button
                 .setIcon('refresh-cw')
                 .setTooltip('Reload dice packs')
-                .onClick(() => this.display()));
+                .onClick(() => {
+                    // Packs are offered to Atlas as dice looks; read them again too.
+                    void this.plugin.atlasLooks?.refresh();
+                    this.display();
+                }));
+
+        // Atlas VTT 1.16+ only; on an older Atlas the note is simply not true, so say so.
+        new Setting(diceSection)
+            .setName('Atlas dice looks')
+            .setDesc('With Atlas VTT 1.16 or later, each dice pack also appears in Atlas’s dice look setting, so Atlas’s own 3D dice can wear it; from 1.18 they wear its whole faces, and Atlas’s asset manager gets a Dice packs tab to pick a pack per collection. Reload the packs after editing one. This does not change the dice rolled here.');
 
         new Setting(diceSection)
             .setName('Dice size')

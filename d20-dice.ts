@@ -128,11 +128,16 @@ const FLOOR_Y = -2.4;
  * a net that fold in rotated - a cube net's bottom flap is printed upside down
  * so that it comes out the right way up on the die.
  */
-interface AtlasQuad {
+export interface AtlasQuad {
     number: number;
     col: number;
     row: number;
     rotation: 0 | 1 | 2 | 3;
+    /**
+     * Which way the digit's top points on the sheet, in degrees clockwise from
+     * the top of the image. Only Atlas dice looks read it, to stand the digit up.
+     */
+    up?: number;
 }
 
 /**
@@ -149,8 +154,10 @@ interface AtlasQuad {
  * atlas's `rotation`: the artist drew each digit for one particular unfolding,
  * and nothing in the geometry knows which.
  */
-interface AtlasFace {
+export interface AtlasFace {
     number: number;
+    /** As on `AtlasQuad`: which way the digit's top points on the sheet, in degrees clockwise. */
+    up?: number;
     /** Corners in sheet pixels, in the order the image draws them. */
     corners: Array<[number, number]>;
     turn: number;
@@ -1466,6 +1473,22 @@ export class D20Dice {
             case 'd20': return 20;
             default: return 20;
         }
+    }
+
+    /** The outward normal of the face that carries `number`, for turning a preview die to it. */
+    public faceNormalOf(diceType: string, number: number): THREE.Vector3 | null {
+        const normals = this.getFaceNormalsForDiceType(diceType);
+        for (let i = 0; i < normals.length; i++) {
+            if (this.mapFaceIndexToNumber(i, diceType) === number) return normals[i].clone();
+        }
+        return null;
+    }
+
+    /** A die as the tray builds it, outside the tray: no physics, not in the scene. For previews. */
+    public createDieMesh(diceType: string): THREE.Mesh {
+        const geometry = this.createGeometryForDiceType(diceType);
+        this.applyUVMappingForDiceType(geometry, diceType);
+        return new THREE.Mesh(geometry, this.createMaterialForDiceType(diceType));
     }
 
     createSingleDice(diceType: string, color: string | null = null): void {

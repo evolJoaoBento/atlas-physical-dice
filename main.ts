@@ -1,7 +1,11 @@
 import { Plugin, Notice, debounce, setIcon, Platform, FileSystemAdapter } from 'obsidian';
 import { D20Dice, DicePack, type RolledDie } from './d20-dice';
 import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab, type DiceColor } from './settings';
-import { sendRollToAtlas } from './atlas-bridge';
+import { AtlasLink, sendRollToAtlas, useAtlasLink } from './atlas-bridge';
+import { AtlasLooks } from './atlas-looks';
+import { AtlasColours } from './atlas-colours';
+import { DicePacksTab } from './dice-packs-tab';
+import { PackPreviews } from './pack-previews';
 import { appendDiceIcon } from './dice-icons';
 import { ensureDefaultPack } from './default-pack';
 
@@ -12,6 +16,16 @@ interface ElectronWindow {
 
 export default class D20DicePlugin extends Plugin {
     settings: DiceSettings;
+    /** Atlas's extension API, when Atlas has one. */
+    private atlasLink: AtlasLink | null = null;
+    /** Every dice pack, offered to Atlas as a dice look. */
+    atlasLooks: AtlasLooks | null = null;
+    /** Dice colours kept per Atlas collection. */
+    private atlasColours: AtlasColours | null = null;
+    /** The Dice packs tab in Atlas's asset manager. */
+    private packsTab: DicePacksTab | null = null;
+    /** Names of the collection colours dice were added in here, by colour. */
+    private readonly collectionColourNames = new Map<string, string>();
     private diceOverlay: HTMLElement | null = null;
     private dice: D20Dice | null = null;
     /** Closes the column of colours a right-click opened over a die, when one is showing. */
@@ -56,9 +70,24 @@ export default class D20DicePlugin extends Plugin {
         });
 
         this.addSettingTab(new DiceSettingTab(this.app, this));
+
+        // Atlas's extension API: rolls go through it, each pack becomes one of
+        // Atlas's dice looks, the asset manager gets a Dice packs tab and each
+        // collection its dice colours. Without it everything below does nothing
+        // and rolls keep going out as the DOM event.
+        this.atlasLink = new AtlasLink(this);
+        useAtlasLink(this.atlasLink);
+        this.atlasLooks = new AtlasLooks(this, this.atlasLink, new PackPreviews(this));
+        this.atlasColours = new AtlasColours(this.atlasLink);
+        this.packsTab = new DicePacksTab(this.atlasLink, this.atlasLooks, this);
+        this.atlasLink.start();
     }
 
     onunload() {
+        this.packsTab?.unload();
+        this.atlasColours?.dispose();
+        this.atlasLooks?.dispose();
+        useAtlasLink(null);
         this.hideDiceOverlay();
         // Write straight through: a queued debounce would never fire.
         this.queueSave.cancel();
@@ -75,6 +104,9 @@ export default class D20DicePlugin extends Plugin {
 
     private showDiceOverlay() {
         if (this.diceOverlay) return;
+
+        // Read the open map's collection colours in now, so the first right-click has them.
+        this.atlasColours?.forActiveMap();
 
         // Create floating overlay that fills the window
         this.diceOverlay = document.body.createDiv('dice-floating-overlay');
@@ -208,7 +240,7 @@ export default class D20DicePlugin extends Plugin {
             button.addEventListener('click', () => void addDie(type, null, button));
             button.addEventListener('contextmenu', (event) => {
                 event.preventDefault();
-                if (this.settings.diceColors.length === 0) {
+                if (this.pickerColours().length === 0) {
                     void removeDie(type);
                     return;
                 }
@@ -503,13 +535,16 @@ export default class D20DicePlugin extends Plugin {
         const picker = document.body.createDiv({ cls: 'dice-color-picker', attr: { role: 'group', 'aria-label': `Add a ${type} in a colour` } });
         picker.setCssStyles({ left: `${rect.left + rect.width / 2}px`, top: `${rect.top}px` });
 
-        for (const entry of this.settings.diceColors) {
+        for (const entry of this.pickerColours()) {
             const circle = picker.createEl('button', {
                 cls: 'dice-color-circle',
                 attr: { 'aria-label': `${entry.name || entry.color} ${type}` }
             });
             circle.setCssProps({ '--dice-swatch': entry.color });
-            circle.addEventListener('click', () => onPick(entry.color));
+            circle.addEventListener('click', () => {
+                if (entry.fromCollection) this.collectionColourNames.set(entry.color, entry.name || entry.color);
+                onPick(entry.color);
+            });
         }
 
         const close = (event: Event) => {
@@ -761,7 +796,26 @@ export default class D20DicePlugin extends Plugin {
     private colorName(color: string | null | undefined): string | null {
         if (!color) return null;
         const match = this.settings.diceColors.find((c) => c.color === color);
-        return match?.name || color;
+        if (match?.name) return match.name;
+        const fromCollection = this.collectionColourNames.get(color)
+            ?? this.atlasColours?.forActiveMap().find((c) => c.color === color)?.name;
+        return fromCollection || match?.name || color;
+    }
+
+    /**
+     * The colours a die can be added in: the plugin's own, then those of the Atlas
+     * collection whose map is open (its Dice tab), leaving out a colour already listed.
+     */
+    private pickerColours(): Array<DiceColor & { fromCollection?: boolean }> {
+        const own = this.settings.diceColors;
+        const seen = new Set(own.map((c) => c.color.toLowerCase()));
+        const extra: Array<DiceColor & { fromCollection?: boolean }> = [];
+        for (const entry of this.atlasColours?.forActiveMap() ?? []) {
+            if (seen.has(entry.color.toLowerCase())) continue;
+            seen.add(entry.color.toLowerCase());
+            extra.push({ id: `collection-${entry.id}`, name: entry.name.trim(), color: entry.color, fromCollection: true });
+        }
+        return [...own, ...extra];
     }
 
     private updateDiceStatusDisplay(
