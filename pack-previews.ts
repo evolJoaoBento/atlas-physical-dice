@@ -135,11 +135,15 @@ export class PackPreviews {
             engine.isViewActive = false;
             engine.setPack(pack);
             engine.setPackTextures(textures, normals);
+            // Face normals are cached per die type for every engine; work them out for this pack.
+            D20Dice.forgetFaceNormals();
 
             mesh = engine.createDieMesh('d20');
             fitToView(mesh);
             const twenty = engine.faceNormalOf('d20', 20);
             if (twenty) mesh.quaternion.setFromUnitVectors(twenty.normalize(), TOWARD_CAMERA).premultiply(TILT);
+            // Before anything waits, so the tray never reads this pack's normals in between.
+            D20Dice.forgetFaceNormals();
 
             const started = Date.now();
             while (!textureReady(mesh) && Date.now() - started < LOAD_TIMEOUT_MS) await delay(50);
@@ -161,6 +165,8 @@ export class PackPreviews {
             renderer.render(scene, camera);
             return renderer.domElement.toDataURL('image/png');
         } finally {
+            // ...and let the tray work its own out again from its own pack.
+            D20Dice.forgetFaceNormals();
             if (mesh) disposeMesh(mesh);
             if (renderer) {
                 renderer.dispose();

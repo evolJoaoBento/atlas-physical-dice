@@ -324,6 +324,15 @@ export class D20Dice {
     // building one throws away a whole BufferGeometry. Build each one once.
     private static shapeCache = new Map<string, CANNON.Shape>();
     private static faceNormalCache = new Map<string, THREE.Vector3[]>();
+
+    /**
+     * Drop the cached face normals. They depend on the pack, so a preview engine
+     * holding another pack calls this before and after, and the tray works its
+     * own out again from its own pack.
+     */
+    public static forgetFaceNormals(): void {
+        D20Dice.faceNormalCache.clear();
+    }
     private readonly normalScratch = new THREE.Vector3();
     // Instance-scoped on purpose: destroy() disposes textures through the
     // meshes that reference them, so a cache outliving the renderer would hand

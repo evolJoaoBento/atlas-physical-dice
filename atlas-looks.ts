@@ -99,6 +99,18 @@ function commonestColour(pixels: Uint8ClampedArray, inside: Uint8ClampedArray): 
     return [sums[top * 4] / hits[top], sums[top * 4 + 1] / hits[top], sums[top * 4 + 2] / hits[top], sums[top * 4 + 3] / hits[top]];
 }
 
+/** The median of each channel over the pixels `inside` marks fully opaque, straight RGBA; null when there are too few. */
+function medianColour(pixels: Uint8ClampedArray, inside: Uint8ClampedArray): [number, number, number, number] | null {
+    const channels: number[][] = [[], [], [], []];
+    for (let i = 0; i < pixels.length; i += 4) {
+        if (inside[i + 3] < 255) continue;
+        for (let c = 0; c < 4; c++) channels[c].push(pixels[i + c]);
+    }
+    if (channels[3].length < 16) return null;
+    const mid = (values: number[]): number => values.sort((a, b) => a - b)[values.length >> 1];
+    return [mid(channels[0]), mid(channels[1]), mid(channels[2]), mid(channels[3])];
+}
+
 // ---------------------------------------------------------------------------
 // Whole faces (API 1.18, `fill: 'face'`)
 // ---------------------------------------------------------------------------
@@ -162,7 +174,26 @@ function cutWholeFace(sheet: ImageBitmap, cut: WholeFaceCut, under: string | nul
             faceCtx.restore();
         }
     } else {
-        wash = commonestColour(faceCtx.getImageData(0, 0, n, n).data, maskCtx.getImageData(0, 0, n, n).data);
+        // What lies round the face is filled with what its edge shows: a thin ring just
+        // inside the outline (off the seam), so a face shape that differs from Atlas's
+        // runs on in its own colour rather than its commonest one.
+        const ring = canvasOf(n, n);
+        const ringCtx = context2d(ring);
+        if (!ringCtx) return null;
+        useTransform(ringCtx, cut.transform);
+        trace(ringCtx, cut.polygon);
+        ringCtx.lineWidth = SEAM * 4;
+        ringCtx.strokeStyle = '#fff';
+        ringCtx.stroke();
+        ringCtx.globalCompositeOperation = 'destination-in';
+        ringCtx.fill();
+        ringCtx.globalCompositeOperation = 'destination-out';
+        ringCtx.lineWidth = SEAM * 2;
+        ringCtx.stroke();
+        ringCtx.setTransform(1, 0, 0, 1, 0, 0);
+        const pixels = faceCtx.getImageData(0, 0, n, n).data;
+        wash = medianColour(pixels, ringCtx.getImageData(0, 0, n, n).data)
+            ?? commonestColour(pixels, maskCtx.getImageData(0, 0, n, n).data);
     }
 
     const out = canvasOf(n, n);
