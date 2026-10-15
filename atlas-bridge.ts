@@ -1,4 +1,4 @@
-import type { Plugin } from 'obsidian';
+import type { App, Plugin } from 'obsidian';
 import type { RolledDie } from './d20-dice';
 
 /**
@@ -9,10 +9,11 @@ import type { RolledDie } from './d20-dice';
  * Atlas (extension API 1.x) publishes `app.plugins.plugins['atlas-vtt'].api`
  * once it is ready and announces it with the workspace event
  * `atlas-vtt:api-ready`. When the API is there, rolls go through
- * `dice.publish`. An Atlas without it still listens for one DOM event on the
- * main window's document, so that stays the way a roll is sent whenever the API
- * is missing, too old, or has no `dice` namespace. Nothing happens, and
- * nothing throws, when Atlas is not installed at all.
+ * `dice.publish`. A released Atlas without it (0.7, 0.8) gets the roll on its
+ * map view's event bus, where its own dice tool announces rolls, so its log,
+ * result card and player window show it. An Atlas older than that listened for
+ * one DOM event on the main window's document, which stays the last resort.
+ * Nothing happens, and nothing throws, when Atlas is not installed at all.
  *
  * Everything is feature-detected: the API's own `has()` where it names the
  * capability, and the presence of the function otherwise.
@@ -29,8 +30,8 @@ export interface AtlasDiceRoll {
     id: string;
     timestamp: number;
     formula: string;
-    /** `color` and `colorName` are the die's tag: its colour, for an Atlas that shows it. */
-    rolls: Array<{ die: string; value: number; max: number; color?: string; colorName?: string }>;
+    /** `color` and `colorName` are the die's tag: its colour, for an Atlas that shows it. `min` only for a released Atlas (`stockRoll`). */
+    rolls: Array<{ die: string; value: number; max: number; min?: number; color?: string; colorName?: string }>;
     modifiers: number;
     total: number;
     player?: string;
@@ -215,6 +216,11 @@ export class AtlasLink {
         return this.ext?.dice ?? null;
     }
 
+    /** Obsidian's app: where a released Atlas's map views are found. */
+    get app(): App {
+        return this.plugin.app;
+    }
+
     /** The id Atlas knows this plugin by: the prefix of its full look ids. */
     get extensionId(): string {
         return this.ext?.id || this.plugin.manifest.id;
@@ -289,7 +295,48 @@ export function useAtlasLink(next: AtlasLink | null): void {
     link = next;
 }
 
-/** The roll as a DOM event on the main window's document: what an Atlas without the API listens to. */
+/** A map view's event bus, as far as a roll needs it. */
+interface RollBus {
+    emit(event: 'dice-rolled', roll: AtlasDiceRoll): unknown;
+}
+
+/** Atlas's map view type. */
+const ATLAS_VIEW_TYPE = 'atlas-vtt';
+
+/**
+ * The event bus of the Atlas map view the GM works in, on a released Atlas without the extension API (0.7, 0.8):
+ * the most recent leaf when it is a map view, else the first one open. Null without one, or where this Atlas keeps
+ * its views another way.
+ */
+function stockMapBus(app: App): RollBus | null {
+    const busOf = (view: unknown): RollBus | null => {
+        const v = view as { getViewType?(): string; serviceManager?: { getEventBus?(): unknown }; atlasStore?: { getState?(): { remoteView?: unknown } } } | null;
+        if (!v || typeof v.getViewType !== 'function' || v.getViewType() !== ATLAS_VIEW_TYPE) return null;
+        // Another plugin's read-only view of a map is no table to log in.
+        if (v.atlasStore?.getState?.().remoteView) return null;
+        const bus = v.serviceManager?.getEventBus?.() as { emit?: unknown } | undefined;
+        return bus && typeof bus.emit === 'function' ? bus as RollBus : null;
+    };
+    const recent = busOf(app.workspace.getMostRecentLeaf()?.view);
+    if (recent) return recent;
+    for (const leaf of app.workspace.getLeavesOfType(ATLAS_VIEW_TYPE)) {
+        const bus = busOf(leaf.view);
+        if (bus) return bus;
+    }
+    return null;
+}
+
+/**
+ * The roll for a released Atlas's map view: its dice log keeps it, the view shows it, and Atlas's player window and
+ * Atlas VTT Connect's players see it, as any roll of Atlas's own dice tool. Every die states its lowest face (1, what
+ * Atlas reads when there is none), which makes Atlas show the roll as its result card rather than throw its own 3D
+ * dice: these dice were already thrown on screen.
+ */
+function stockRoll(roll: AtlasDiceRoll): AtlasDiceRoll {
+    return { ...roll, rolls: roll.rolls.map((die) => ({ ...die, min: 1 })) };
+}
+
+/** The roll as a DOM event on the main window's document: what an Atlas before the extension API listened to. */
 function dispatchRollEvent(roll: AtlasDiceRoll): void {
     // Atlas listens on the main window's document, so this deliberately uses
     // `document` rather than `activeDocument`, which is a popout's while it has focus.
@@ -309,6 +356,16 @@ export function sendRollToAtlas(dice: AtlasRolledDie[]): void {
         } catch (error) {
             // Atlas refused the roll before logging anything, so the old route cannot double it.
             console.warn('Atlas VTT Physical Dice: dice.publish failed, sending the roll as an event instead:', error);
+        }
+    }
+    // A released Atlas without the API: straight into the map view's dice log.
+    const bus = link ? stockMapBus(link.app) : null;
+    if (bus) {
+        try {
+            bus.emit('dice-rolled', stockRoll(roll));
+            return;
+        } catch (error) {
+            console.warn('Atlas VTT Physical Dice: could not log the roll in Atlas, sending it as an event instead:', error);
         }
     }
     dispatchRollEvent(roll);

@@ -17,10 +17,13 @@ match Atlas' own dice panel.
 - **Read off the die**: the number reported is the number printed on the face
   that is up. A d4 is read at its apex.
 - **Atlas VTT integration**: each settled roll is sent to Atlas VTT with formula,
-  per-die values and total. With Atlas's extension API (1.16 or later) it goes
-  through `dice.publish`; an older Atlas gets the `atlas-dice-rolled` event as
-  before. If Atlas VTT is not installed nothing happens, and the dice work on
-  their own.
+  per-die values and total. On Atlas VTT from Community plugins (0.7, 0.8) the
+  roll goes into the open map's dice log and shows as Atlas's result card (not a
+  second 3D throw), in Atlas's player window too. With Atlas's extension API
+  (1.16 or later) it goes through `dice.publish`. If Atlas VTT is not installed,
+  or no map is open, nothing happens, and the dice work on their own.
+- The features below need Atlas's extension API, which no released Atlas has
+  yet; on Atlas from Community plugins they stay off and nothing else changes.
 - **Dice packs as Atlas dice looks**: with Atlas VTT 1.16 or later, every pack
   is registered as a dice look, so Atlas's own 3D dice can wear your faces. From
   1.18 they wear the pack's whole faces, and Atlas's asset manager gets a
