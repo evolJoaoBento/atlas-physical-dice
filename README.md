@@ -1,146 +1,75 @@
 # Atlas VTT Extension - Interactive Dice
 
-Roll 3D physical dice over your notes in Obsidian, and send every result to
-the [Atlas VTT](https://github.com/ByteMirror) plugin so it shows in Atlas' roll toast,
-roll log and player view.
+Throw real 3D dice over your notes, and send every result to [Atlas VTT](https://github.com/ByteMirror/atlas-vtt)'s dice log.
 
-A fork of [Physical Dice](https://github.com/evolJoaoBento/obsidian-physical-dice),
-reworked around Atlas VTT: the online chat and API are gone, and the controls
-match Atlas' own dice panel.
+Works on its own, and with Atlas VTT from Community plugins. A fork of [Physical Dice](https://github.com/evolJoaoBento/obsidian-physical-dice).
 
-## Features
+## Install
 
-- **Seven dice types**: d4, d6, d8, d10, d12, d20 and a percentile d100.
-- **Real physics**: Three.js rendering and cannon-es physics. Click **Roll**, or
-  grab a die and throw it.
-- **Caught dice**: a die that lands on an edge is highlighted and can be rerolled.
-- **Read off the die**: the number reported is the number printed on the face
-  that is up. A d4 is read at its apex.
-- **Atlas VTT integration**: each settled roll is sent to Atlas VTT with formula,
-  per-die values and total. On Atlas VTT from Community plugins (0.7, 0.8) the
-  roll goes into the open map's dice log and shows as Atlas's result card (not a
-  second 3D throw), in Atlas's player window too. With Atlas's extension API
-  (1.16 or later) it goes through `dice.publish`. If Atlas VTT is not installed,
-  or no map is open, nothing happens, and the dice work on their own.
-- The features below need Atlas's extension API, which no released Atlas has
-  yet; on Atlas from Community plugins they stay off and nothing else changes.
-- **Dice packs as Atlas dice looks**: with Atlas VTT 1.16 or later, every pack
-  is registered as a dice look, so Atlas's own 3D dice can wear your faces. From
-  1.18 they wear the pack's whole faces, and Atlas's asset manager gets a
-  **Dice packs** tab to pick a pack per collection.
-- **Dice colours per collection**: with Atlas VTT 1.18 or later, each
-  collection's settings get a **Dice** tab listing colours (a name and a colour
-  each). Atlas's dice tray offers them, and so does this plugin's dice panel while
-  a map of that collection is open.
-- **Atlas-style controls**: dice icons, count badges, right-click a die to remove it.
-- **Dice packs**: a folder is a set. Face art, normal maps, colour, per-die size,
-  finish, bevel and the layout of each net all live in the pack's `pack.json`.
+Settings → Community plugins → Browse → search **Atlas VTT Extension - Interactive Dice** → Install → Enable.
 
-## Usage
+## Roll dice
 
-1. Click the dice icon in the ribbon, or run **Toggle dice roller** from the
-   command palette.
-2. Click dice in the controls panel to add them. Right-click one to add it in a
-   colour (your own, and the open Atlas map's collection colours), or to remove
-   one when there are no colours.
-3. Click **Roll**, or drag a die and throw it.
-4. The total shows in the panel and, with Atlas VTT installed, in Atlas.
+1. Click the dice icon in the ribbon, or run **Toggle dice roller** from the command palette. The dice panel opens over your note.
+2. **Add dice:** click a die (d4, d6, d8, d10, d12, d20, d100). The badge counts how many you have; up to 50.
+3. **Remove a die:** right-click it. If you have dice colours, right-click offers them instead (see below).
+4. **Roll:** click **Roll**, or grab a die on the table and throw it.
+5. **Read the result:** the total shows in the panel, each die named, e.g. `Red d20=14 + d6=3 = 17`. Click it to copy it.
+6. **Caught dice:** a die that lands tilted on an edge is highlighted. Click **Reroll caught dice** to throw only those.
+
+Run **Toggle dice roller** again, or click the icon, to close the panel.
+
+## With Atlas VTT
+
+Open a map in Atlas, then roll. Every result goes into that map's dice log and shows as Atlas's result card, in Atlas's player window too (and to your online players with Atlas VTT Connect). Nothing else to set up. Without Atlas, or with no map open, the dice simply work on their own.
+
+## Dice colours
+
+Settings → **Dice colours**: add colours with a name, e.g. "Fire". In the dice panel, right-click a die and pick a colour to add it in that colour. The roll names each die by its colour, and Atlas's log keeps the colour.
+
+## Dice packs
+
+A dice pack is a folder with the dice's face art, colours, sizes and finish.
+
+1. Settings → **Dice pack**: pick a pack from the list.
+2. **Make your own:** click the folder button next to **Dice pack**, copy `Texture-Pack-Default` under a new name, edit its images and `pack.json`, click the reload button, then pick it. The format is in [dice/README.md](dice/README.md).
+
+The default pack (white with black numbers) belongs to the plugin and is rewritten on update, so always edit a copy.
 
 ## Settings
 
 | Setting | What it does |
 |---|---|
-| Dice pack | Folder under the plugin's `dice/` directory holding the set |
-| Dice size | Overall size of the set; the pack sets each die's size within it |
-| Shadows | Soft shadows under the dice |
-| Lighting | Ambient and directional light: colour, strength, position |
-| Motion threshold | How still the dice must be before the result is read |
-| Face detection tolerance | How flat a face must land to count; others are caught |
-| Highlight completed dice | Glow on settled dice, and its colour |
+| Dice colours | Colours you can add dice in |
+| Dice pack | The set you roll; buttons to open the packs folder and reload it |
+| Dice size | Size of the whole set |
+| Dice shadows | Soft shadows under the dice |
+| Ambient / directional light | Strength, colour and position of the light on the dice |
+| Motion threshold | How still the dice must be before the result is read: higher waits longer |
+| Face detection tolerance | How flat a die must land to count; others are caught |
+| Highlight completed dice | A glow on settled dice, and its colour |
 
-## Dice packs
+## Atlas builds with the extension API
 
-On first load the plugin writes its default set to
-`<vault>/.obsidian/plugins/atlas-physical-dice/dice/Texture-Pack-Default/`.
-The default set is white with black numbers. That folder belongs to the plugin
-and is refreshed on update. To make your own, click the folder button next to
-**Dice pack** in the settings, copy the default folder under a new name, edit
-the art and `pack.json`, click the reload button and pick it from the list. See [dice/README.md](dice/README.md) for the format.
+These need Atlas's extension API, which no released Atlas has yet. On Atlas from Community plugins they stay off and everything above works as described.
 
-### Dice packs in Atlas
+- **Packs as Atlas dice looks:** every pack appears in Atlas's own dice look setting, so Atlas's 3D dice wear your faces.
+- **Dice packs tab:** Atlas's asset manager lists your packs. **Use for collection** gives a collection its own dice look.
+- **Collection dice colours:** a **Dice** tab in each collection's settings, offered in Atlas's dice tray and in this plugin's panel while a map of that collection is open.
 
-With Atlas VTT's extension API 1.16 or later (capability `dice-looks`), each
-folder under `dice/` shows up in Atlas's dice look setting under the pack's
-name (`name` in its `pack.json`, else the folder name), with a picture of its
-d20. Atlas keeps its own dice, throw and sounds; only the faces and the body
-colour change.
-
-- **Atlas 1.18 or later: whole faces.** Each face is cut from the pack's sheet
-  with its background and numeral (`fill: 'face'`) and laid on Atlas's outline
-  of that face, the digit upright. The sheet's transparency is kept, so the body
-  colour shows through it: the pack's `color`, or the colour a die is rolled in.
-  A pack with normal maps gives Atlas their relief (`bump`).
-- **Atlas 1.16 and 1.17: digits.** Only each digit is cut out, and Atlas prints
-  it on its own card where it prints its numeral.
-- **Dice packs tab** (1.18, `asset-tabs`). Atlas's asset manager lists every
-  pack with its picture, a button to read the packs again and one to open their
-  folder. **Use for collection** makes a pack the collection's dice look
-  (`dice-look-choice`), and the pack in use is marked.
-- **Dice tab** in a collection's settings (1.18, `collections`): the colours that
-  collection's dice can be rolled in, a name and a colour each. They are kept with
-  the collection in Atlas's asset index (on this device), offered in Atlas's dice
-  tray (`dice-colours`) and in this plugin's dice panel while a map of that
-  collection is open, and sent with each roll as the die's `color` and `colorName`.
-- Atlas looks need to know which way up each digit is drawn on the sheet. A
-  face cell takes an optional `"up"`: the direction the digit's top points on the
-  sheet, in degrees clockwise from the top of the image. The default pack has it
-  on every cell. A d6 cell without it is read from its `rotation`; any other face
-  without it keeps Atlas's own numeral, and a d4 needs `vertices` as it always has.
-- A pack's per-die `color` is painted under that die's faces, since Atlas has one
-  body colour per look; such a die does not take the colour it is rolled in.
-- An optional `ink` (`#rrggbb`) colours the numerals Atlas prints where a face has
-  no art.
-- Click the reload button next to **Dice pack** (or in the Dice packs tab) after
-  editing a pack to register it again. On an Atlas without the API nothing changes.
-
-## Installation
-
-### Community plugins
-
-Settings → Community plugins → Browse → search **Atlas VTT Extension - Interactive Dice** →
-Install → Enable.
-
-### Manual
-
-Download `main.js`, `manifest.json` and `styles.css` from the
-[latest release](https://github.com/evolJoaoBento/atlas-physical-dice/releases/latest)
-into `<vault>/.obsidian/plugins/atlas-physical-dice/`, reload Obsidian and enable
-the plugin.
+Pack authors: how faces become Atlas looks (`up`, `ink`, per-die `color`) is in [dice/README.md](dice/README.md).
 
 ## Privacy
 
-The plugin makes no network requests. Rolls, dice looks and dice colours are passed
-to Atlas VTT inside Obsidian and never leave your device.
+No network requests. Rolls stay inside Obsidian: they go only to Atlas VTT on your device.
 
 ## Development
 
-```bash
-npm install
-npm run dev     # watch build
-npm run build   # type-check and production build
-```
-
-The browser test harness (Chrome DevTools Protocol smoke checks, sheet
-calibration scripts) is not part of the plugin and lives in the upstream
-[obsidian-physical-dice](https://github.com/evolJoaoBento/obsidian-physical-dice)
-repository.
+`npm install`, then `npm run dev` (watch) or `npm run build` (type-check and production build). Releases are built and attested by GitHub Actions from a tag equal to the manifest version.
 
 ## Credits
 
-- [Three.js](https://threejs.org/) and [cannon-es](https://github.com/pmndrs/cannon-es).
-- [dice-box](https://github.com/3d-dice/dice-box) and
-  [react-3d-dice](https://github.com/aqandrew/react-3d-dice) for dice geometry
-  and approach. See [Credits.md](Credits.md).
+[Three.js](https://threejs.org/), [cannon-es](https://github.com/pmndrs/cannon-es), and [dice-box](https://github.com/3d-dice/dice-box) and [react-3d-dice](https://github.com/aqandrew/react-3d-dice) for dice geometry. See [Credits.md](Credits.md).
 
 ## License
 

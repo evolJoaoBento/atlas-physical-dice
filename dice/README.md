@@ -169,3 +169,12 @@ repository (see its `harness/README.md`):
   than by reading digits off a rendered die - a digit drawn rotated in the net
   reads as a different digit, and a 2 turned upside down has been called a 5
   here more than once.
+
+## Atlas dice looks
+
+With Atlas's extension API (1.16 or later), every pack is also an Atlas dice look, named by `name` in its `pack.json` (else the folder name). Atlas keeps its own dice, throw and sounds; only the faces and the body colour change. From 1.18 each face is cut whole from the sheet, transparency kept, so the body colour (the pack's `color`, or the colour a die is rolled in) shows through; normal maps give Atlas their relief. On 1.16 and 1.17 only the digits are cut out and printed on Atlas's own card.
+
+- **`up`** on a face cell: which way the digit's top points on the sheet, in degrees clockwise from the top of the image. The default pack sets it on every cell. A d6 cell without it is read from its `rotation`; any other face without it keeps Atlas's own numeral, and a d4 needs `vertices` as always.
+- **Per-die `color`** is painted under that die's faces, since Atlas has one body colour per look; such a die does not take the colour it is rolled in.
+- **`ink`** (`#rrggbb`) colours the numerals Atlas prints where a face has no art.
+- Click the reload button next to **Dice pack** (or in Atlas's Dice packs tab) after editing a pack to register it again.
