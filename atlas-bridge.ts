@@ -30,8 +30,11 @@ export interface AtlasDiceRoll {
     id: string;
     timestamp: number;
     formula: string;
-    /** `color` and `colorName` are the die's tag: its colour, for an Atlas that shows it. `min` only for a released Atlas (`stockRoll`). */
-    rolls: Array<{ die: string; value: number; max: number; min?: number; color?: string; colorName?: string }>;
+    /**
+     * `color` and `colorName` are the die's tag: its colour, for an Atlas that shows it. A released Atlas reads the tag
+     * as `colour` and `name`, and needs `min` (`stockRoll`).
+     */
+    rolls: Array<{ die: string; value: number; max: number; min?: number; color?: string; colorName?: string; colour?: string; name?: string }>;
     modifiers: number;
     total: number;
     player?: string;
@@ -330,10 +333,17 @@ function stockMapBus(app: App): RollBus | null {
  * The roll for a released Atlas's map view: its dice log keeps it, the view shows it, and Atlas's player window and
  * Atlas VTT Connect's players see it, as any roll of Atlas's own dice tool. Every die states its lowest face (1, what
  * Atlas reads when there is none), which makes Atlas show the roll as its result card rather than throw its own 3D
- * dice: these dice were already thrown on screen.
+ * dice: these dice were already thrown on screen. Each die's colour tag goes as Atlas names it.
  */
 function stockRoll(roll: AtlasDiceRoll): AtlasDiceRoll {
-    return { ...roll, rolls: roll.rolls.map((die) => ({ ...die, min: 1 })) };
+    // A released Atlas names the tag `colour` and `name` (its `diceFormula.ts`): the dice log, the result card and its
+    // online players show it from those.
+    return {
+        ...roll,
+        rolls: roll.rolls.map(({ color, colorName, ...die }) => ({
+            ...die, min: 1, ...(color ? { colour: color } : {}), ...(colorName ? { name: colorName } : {}),
+        })),
+    };
 }
 
 /** The roll as a DOM event on the main window's document: what an Atlas before the extension API listened to. */
