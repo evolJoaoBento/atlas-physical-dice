@@ -21,3 +21,4 @@ textures.json
 
 # written by the plugin on load: which release laid out the default pack
 dice/Texture-Pack-Default/.version
+.test-build/

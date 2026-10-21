@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node tests/run.mjs"
   },
   "keywords": [],
   "author": "Bento's Grimoire of Things",

@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { DiceSettings } from './settings';
+import { readFace, type DieType } from './kit/faces';
 
 /** Flip to true to get the roll and face-detection trace back on the console. */
 const DEBUG = false;
 const log = (...args: unknown[]): void => { if (DEBUG) console.debug(...args); };
-
-const UP = new THREE.Vector3(0, 1, 0);
-const DOWN = new THREE.Vector3(0, -1, 0);
 
 /**
  * Contact shadows, drawn as blurred discs under each die.
@@ -333,7 +331,6 @@ export class D20Dice {
     public static forgetFaceNormals(): void {
         D20Dice.faceNormalCache.clear();
     }
-    private readonly normalScratch = new THREE.Vector3();
     // Instance-scoped on purpose: destroy() disposes textures through the
     // meshes that reference them, so a cache outliving the renderer would hand
     // out disposed handles to the next overlay.
@@ -2707,52 +2704,17 @@ export class D20Dice {
         // Get face normals for this dice type
         const faceNormals = this.getFaceNormalsForDiceType(diceType);
 
-        // Detection vector based on dice type
-        const detectionVector = diceType === 'd4' ? DOWN : UP;
+        const numbers = faceNormals.map((_, i) => this.mapFaceIndexToNumber(i, diceType));
+        const q = diceMesh.quaternion;
+        const reading = readFace(diceType as DieType, faceNormals, numbers, { x: q.x, y: q.y, z: q.z, w: q.w }, this.settings.faceDetectionTolerance);
+        const requiredConfidence = 1.0 - this.settings.faceDetectionTolerance;
 
-        let bestDotProduct = -Infinity;
-        let bestFaceIndex = 0;
-
-        // Check each face normal to find which face is pointing up/down
-        for (let i = 0; i < faceNormals.length; i++) {
-            // Transform face normal to world space using dice rotation. The
-            // cached normals are shared, so copy into scratch rather than
-            // rotating them in place.
-            const worldNormal = this.normalScratch.copy(faceNormals[i]);
-            worldNormal.applyQuaternion(diceMesh.quaternion);
-
-            // Calculate dot product with detection vector
-            const dotProduct = worldNormal.dot(detectionVector);
-
-            if (dotProduct > bestDotProduct) {
-                bestDotProduct = dotProduct;
-                bestFaceIndex = i;
-            }
-        }
-
-        // Check if the best face meets the confidence threshold
-        const minConfidenceForValidFace = 1.0 - this.settings.faceDetectionTolerance;
-        const isCaught = bestDotProduct < minConfidenceForValidFace;
-
-        if (isCaught) {
+        if (reading.caught) {
             // Face detection failed - dice is caught
-            return {
-                isCaught: true,
-                result: null,
-                confidence: bestDotProduct,
-                requiredConfidence: minConfidenceForValidFace
-            };
-        } else {
-            // Face detection succeeded - return the result
-            const result = this.mapFaceIndexToNumber(bestFaceIndex, diceType);
-            log(`🎯 Dice ${diceIndex} (${diceType}) face detection: face index ${bestFaceIndex} = ${result}, confidence: ${bestDotProduct.toFixed(3)}`);
-            return {
-                isCaught: false,
-                result: result,
-                confidence: bestDotProduct,
-                requiredConfidence: minConfidenceForValidFace
-            };
+            return { isCaught: true, result: null, confidence: reading.confidence, requiredConfidence };
         }
+        log(`🎯 Dice ${diceIndex} (${diceType}) face detection: ${reading.face}, confidence: ${reading.confidence.toFixed(3)}`);
+        return { isCaught: false, result: reading.face, confidence: reading.confidence, requiredConfidence };
     }
 
     private getTopFaceNumberForDice(diceIndex: number): number {
