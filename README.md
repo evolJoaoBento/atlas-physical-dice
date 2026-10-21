@@ -1,4 +1,6 @@
-# Atlas VTT Extension - Interactive Dice
+# Interactive Dice for Atlas VTT
+
+Interactive Dice for Atlas VTT is a community extension. It is not made, endorsed or supported by Atlas VTT or Atlas Online.
 
 Throw real 3D dice over your notes, and send every result to [Atlas VTT](https://github.com/ByteMirror/atlas-vtt)'s dice log.
 
@@ -6,7 +8,7 @@ Works on its own, and with Atlas VTT from Community plugins. A fork of [Physical
 
 ## Install
 
-Settings → Community plugins → Browse → search **Atlas VTT Extension - Interactive Dice** → Install → Enable.
+Settings → Community plugins → Browse → search **Interactive Dice for Atlas VTT** → Install → Enable.
 
 ## Roll dice
 
