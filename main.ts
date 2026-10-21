@@ -8,6 +8,8 @@ import { DicePacksTab } from './dice-packs-tab';
 import { PackPreviews } from './pack-previews';
 import { appendDiceIcon } from './dice-icons';
 import { ensureDefaultPack } from './default-pack';
+import { caughtMessage } from './kit/caught';
+import type { DieType } from './kit/faces';
 
 /** The slice of Electron's renderer API the packs-folder button uses. */
 interface ElectronWindow {
@@ -853,6 +855,9 @@ export default class D20DicePlugin extends Plugin {
             }).join(' ');
 
             displayText += `\n${diceDetails}`;
+
+            const message = caughtMessage(status.filter(d => d.status === 'caught') as Array<{ type: DieType }>);
+            if (message) displayText += `\n${message}`;
         }
 
         statusElement.textContent = displayText;

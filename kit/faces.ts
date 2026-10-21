@@ -15,6 +15,16 @@ export interface FaceReading {
     confidence: number;
 }
 
+// Physical faces per die: the percentile die has ten, though its roll spans 100 values.
+const MESH_FACES: Record<DieType, number> = { d4: 4, d6: 6, d8: 8, d10: 10, d100: 10, d12: 12, d20: 20 };
+
+// A d10 is numbered 0-9 or 1-10 depending on the pack, so 0 is allowed there.
+function isFaceOf(type: DieType, n: number): boolean {
+    if (!Number.isInteger(n)) return false;
+    if (type === 'd100') return n >= 0 && n <= 90 && n % 10 === 0;
+    return n >= (type === 'd10' ? 0 : 1) && n <= DIE_FACES[type];
+}
+
 // Rotates v by the unit quaternion q.
 function rotate(v: Vec3, q: Quat): Vec3 {
     const ix = q.w * v.x + q.y * v.z - q.z * v.y;
@@ -28,8 +38,12 @@ function rotate(v: Vec3, q: Quat): Vec3 {
     };
 }
 
-// Up is +y; the d4 reads the face pointing down. Caught when no face is within tolerance.
+// Up is +y; the d4 reads the face pointing down. Caught when no face is within tolerance,
+// or when the tables are not the die's own: a number that is not on the die is never read.
 export function readFace(type: DieType, normals: readonly Vec3[], numbers: readonly number[], q: Quat, tolerance: number): FaceReading {
+    if (normals.length !== MESH_FACES[type] || numbers.length !== MESH_FACES[type] || !numbers.every((n) => isFaceOf(type, n))) {
+        return { caught: true, face: null, confidence: 0 };
+    }
     const sign = type === 'd4' ? -1 : 1;
     let best = -Infinity;
     let bestIndex = 0;

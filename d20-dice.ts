@@ -1101,11 +1101,6 @@ export class D20Dice {
         return false; // No dice of this type found
     }
 
-    private getRandomResultForDiceType(diceType: string): number {
-        const faceCount = this.getFaceCountForDiceType(diceType);
-        return Math.floor(Math.random() * faceCount) + 1;
-    }
-
     private checkSingleDiceSettling(diceIndex: number): void {
         if (!this.isViewActive || !this.isRolling || diceIndex < 0 || diceIndex >= this.diceBodyArray.length) return;
 
@@ -1143,21 +1138,22 @@ export class D20Dice {
             // Check if dice can be properly detected
             const checkResult = this.checkDiceResult(diceIndex);
 
-            let formattedResult: string;
-
             if (checkResult.isCaught) {
-                // Dice is caught - highlight it and show in result
-                this.highlightCaughtDice(diceIndex, true);
-                formattedResult = `1${diceType}(CAUGHT) = CAUGHT - Face confidence: ${checkResult.confidence.toFixed(3)}, required: ${checkResult.requiredConfidence.toFixed(3)}`;
+                // A caught die gives no number: it waits to be rolled again, like in a group roll
+                this.holdCaughtSingleDice(diceIndex);
+                this.isRolling = false;
                 this.lastRoll = null;
                 log(`🥅 Single dice ${diceIndex} (${diceType}) CAUGHT! Face confidence: ${checkResult.confidence.toFixed(3)}, required: ${checkResult.requiredConfidence.toFixed(3)}`);
-            } else {
-                // Valid result
-                formattedResult = `1${diceType}(${checkResult.result}) = ${checkResult.result}`;
-                this.lastRoll = [{ type: diceType, value: checkResult.result, index: diceIndex }];
-                log(`📊 Single dice roll result: ${formattedResult}`);
+                return;
             }
 
+            const formattedResult = `1${diceType}(${checkResult.result}) = ${checkResult.result}`;
+            this.lastRoll = [{ type: diceType, value: checkResult.result, index: diceIndex }];
+            log(`📊 Single dice roll result: ${formattedResult}`);
+
+            // Any state left from an earlier catch is settled now
+            this.diceStates = [];
+            this.highlightCaughtDice(diceIndex, false);
             this.isRolling = false;
 
             // Trigger the onRollComplete callback with formatted result
@@ -1219,9 +1215,14 @@ export class D20Dice {
         let totalSum = 0;
         const rolled: RolledDie[] = [];
 
+        const caught: number[] = [];
         for (let i = 0; i < this.diceArray.length; i++) {
             const diceType = this.diceTypeArray[i];
-            const result = this.getTopFaceNumberForDice(i);
+            const result = this.checkDiceResult(i).result;
+            if (result === null) {
+                caught.push(i);
+                continue;
+            }
             rolled.push({ type: diceType, value: result, index: i });
 
             if (!results[diceType]) {
@@ -1229,6 +1230,13 @@ export class D20Dice {
             }
             results[diceType].push(result);
             totalSum += result;
+        }
+
+        // A caught die gives no number: the roll waits for it to be rolled again
+        if (caught.length > 0) {
+            caught.forEach((i) => this.markCaught(i));
+            log(`🥅 ${caught.length} dice caught - no result`);
+            return;
         }
 
         // Format the result string
@@ -1264,7 +1272,8 @@ export class D20Dice {
         const diceMesh = this.diceArray[diceIndex];
 
         if (!diceMesh) {
-            return { isCaught: false, result: this.getRandomResultForDiceType(diceType), confidence: 0, requiredConfidence: 0 };
+            // Nothing to read: a die with no mesh counts as caught
+            return { isCaught: true, result: null, confidence: 0, requiredConfidence: 0 };
         }
 
         // Get face normals for this dice type
@@ -1283,17 +1292,35 @@ export class D20Dice {
         return { isCaught: false, result: reading.face, confidence: reading.confidence, requiredConfidence };
     }
 
-    private getTopFaceNumberForDice(diceIndex: number): number {
-        // Use the unified checkDiceResult method to perform face detection
-        const checkResult = this.checkDiceResult(diceIndex);
+    /** Mark a die caught and highlight it, once. A no-op for a die already caught. */
+    private markCaught(index: number): void {
+        const state = this.diceStates[index];
+        if (!state || state.isCaught) return;
+        state.isCaught = true;
+        state.isRolling = false;
+        state.isComplete = false;
+        state.result = null;
+        this.highlightCaughtDice(index, true, true);
+    }
 
-        // Just return the result (or fallback if caught)
-        // Note: Caught checking/highlighting is handled separately in monitoring code
-        if (checkResult.isCaught) {
-            return this.getRandomResultForDiceType(this.diceTypeArray[diceIndex]);
+    /**
+     * A lone thrown die that came up caught has no group monitor to track it, so
+     * give it a state of its own for the status line and the reroll button.
+     */
+    private holdCaughtSingleDice(index: number): void {
+        if (this.diceStates.length !== this.diceArray.length) {
+            this.diceStates = this.diceArray.map((_, i) => ({
+                index: i,
+                type: this.diceTypeArray[i] || 'd20',
+                isRolling: false,
+                isCaught: false,
+                isComplete: false,
+                result: null,
+                lastMotion: Date.now(),
+                stableTime: 0
+            }));
         }
-
-        return checkResult.result;
+        this.markCaught(index);
     }
 
     /**
@@ -3163,10 +3190,8 @@ export class D20Dice {
 
                                     if (checkResult.isCaught) {
                                         if (!state.isCaught) {
-                                            // First time catching this dice - no highlight for caught state
-                                            state.isCaught = true;
-                                            state.isRolling = false;
-                                            state.result = null;
+                                            // First time catching this dice
+                                            this.markCaught(i);
                                             log(`🥅 Dice ${i} (${state.type}) CAUGHT! Face confidence: ${checkResult.confidence.toFixed(3)}, required: ${checkResult.requiredConfidence.toFixed(3)}`);
                                         }
                                         // Update lastMotion to prevent rapid re-checking
@@ -3184,6 +3209,7 @@ export class D20Dice {
                                         state.isRolling = false;
                                         state.isCaught = false;
                                         // Highlight completed dice
+                                        this.highlightCaughtDice(i, false);
                                         this.highlightCaughtDice(i, true);
                                     }
                                 }
@@ -3198,6 +3224,7 @@ export class D20Dice {
                                 log(`🔄 Dice ${i} was caught but is moving again - clearing caught state`);
                                 state.isCaught = false;
                                 state.isRolling = true;
+                                this.highlightCaughtDice(i, false);
                             }
 
                             // If dice was completed but is moving again, remove highlight
@@ -3260,30 +3287,39 @@ export class D20Dice {
                 // Check for timeout
                 if (now - startTime > maxWaitTime) {
                     log(`⏰ Roll timeout after ${maxWaitTime/1000}s`);
-                    // Force completion with current results
-                    const partialResults = this.diceStates.map((state, i) => {
-                        if (state.result !== null) {
-                            return state.result;
+                    // Read what is up now; a die that gives no number is caught and waits
+                    let anyCaught = false;
+                    this.diceStates.forEach((state, i) => {
+                        if (state.result !== null) return;
+                        const forced = this.checkDiceResult(i);
+                        if (forced.isCaught) {
+                            this.markCaught(i);
+                            anyCaught = true;
                         } else {
-                            // Force detect result for incomplete dice
-                            return this.getTopFaceNumberForDice(i);
+                            state.result = forced.result;
+                            state.isComplete = true;
+                            state.isRolling = false;
                         }
                     });
-                    const total = partialResults.reduce((sum, val) => sum + val, 0);
-                    const breakdown = partialResults
-                        .map((result, i) => `${this.diceStates[i].type}=${result}`)
-                        .join(' + ');
-                    this.lastRoll = partialResults.map((value, i) => ({ type: this.diceStates[i].type, value, index: i }));
 
-                    // Clear all highlights before resolving
-                    this.clearAllHighlights();
+                    if (!anyCaught) {
+                        const partialResults = this.diceStates.map((state) => state.result);
+                        const total = partialResults.reduce((sum, val) => sum + val, 0);
+                        const breakdown = partialResults
+                            .map((result, i) => `${this.diceStates[i].type}=${result}`)
+                            .join(' + ');
+                        this.lastRoll = partialResults.map((value, i) => ({ type: this.diceStates[i].type, value, index: i }));
 
-                    // Clear monitoring state
-                    this.currentMonitor = null;
-                    this.diceStates = [];
+                        // Clear all highlights before resolving
+                        this.clearAllHighlights();
 
-                    resolve(`${breakdown} = ${total}`);
-                    return;
+                        // Clear monitoring state
+                        this.currentMonitor = null;
+                        this.diceStates = [];
+
+                        resolve(`${breakdown} = ${total}`);
+                        return;
+                    }
                 }
 
                 // Continue monitoring (only if view is still active)
@@ -3348,6 +3384,12 @@ export class D20Dice {
             }
         });
 
+        // A lone caught die has no group monitor to watch it land again
+        if (this.currentMonitor === null) {
+            this.isRolling = true;
+            caughtDice.forEach(state => this.checkSingleDiceSettling(state.index));
+        }
+
         this.wake();
         return true;
     }
@@ -3364,14 +3406,14 @@ export class D20Dice {
         }));
     }
 
-    // Highlight completed dice with emissive glow
-    private highlightCaughtDice(index: number, highlight: boolean) {
+    // Highlight completed dice with emissive glow; a caught die glows red whatever the setting
+    private highlightCaughtDice(index: number, highlight: boolean, caught = false) {
         const dice = this.diceArray[index];
         if (!dice) return;
 
         // Still take the un-highlight branch when the feature is off, so a die
         // highlighted before the setting was turned off gets its material back.
-        if (highlight && this.settings.highlightCompletedDice) {
+        if (highlight && (caught || this.settings.highlightCompletedDice)) {
             // Store original material if not already stored
             if (!this.originalMaterials.has(index)) {
                 this.originalMaterials.set(index, dice.material);
@@ -3381,7 +3423,7 @@ export class D20Dice {
             const currentMaterial = Array.isArray(dice.material) ? dice.material[0] : dice.material;
             const highlightedMaterial = (currentMaterial as THREE.MeshStandardMaterial).clone();
             // Convert hex color string to number (e.g., "#00ff00" -> 0x00ff00)
-            const colorHex = parseInt(this.settings.completedDiceHighlightColor.replace('#', ''), 16);
+            const colorHex = caught ? 0xff4444 : parseInt(this.settings.completedDiceHighlightColor.replace('#', ''), 16);
             highlightedMaterial.emissive.setHex(colorHex);
             highlightedMaterial.emissiveIntensity = 0.8;
             dice.material = highlightedMaterial;
