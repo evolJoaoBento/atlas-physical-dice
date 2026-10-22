@@ -173,7 +173,11 @@ export function dieColor(diceType: string, pack: DicePack): string {
 }
 
 export function dieFaceCount(diceType: string, pack: DicePack): number {
-    switch (dieSolid(diceType, pack)) {
+    return dieFaceCountOfSolid(dieSolid(diceType, pack));
+}
+
+function dieFaceCountOfSolid(solid: string): number {
+    switch (solid) {
         case 'd4': return 4;
         case 'd6': return 6;
         case 'd8': return 8;
@@ -1332,58 +1336,6 @@ function computeFaceNormalsForDiceType(diceType: string, geometry: THREE.BufferG
     if (atlasFaces != null) return deriveFaceNormalsFromGeometry(geometry, atlasFaces);
 
     switch (diceType) {
-        case 'd4': {
-            // THREE.js TetrahedronGeometry creates a regular tetrahedron with vertices:
-            // v0: (1, 1, 1), v1: (-1, -1, 1), v2: (-1, 1, -1), v3: (1, -1, -1)
-            // Center is at (0, 0, 0)
-
-            // The actual face structure from THREE.js TetrahedronGeometry:
-            // Looking at the source, faces are created as:
-            // Face 0: (2, 3, 0) - contains vertices v2, v3, v0
-            // Face 1: (0, 3, 1) - contains vertices v0, v3, v1
-            // Face 2: (1, 3, 2) - contains vertices v1, v3, v2
-            // Face 3: (2, 0, 1) - contains vertices v2, v0, v1
-
-            const v0 = new THREE.Vector3(1, 1, 1);
-            const v1 = new THREE.Vector3(-1, -1, 1);
-            const v2 = new THREE.Vector3(-1, 1, -1);
-            const v3 = new THREE.Vector3(1, -1, -1);
-
-            // Calculate face centers to ensure normals point outward
-            const center = new THREE.Vector3(0, 0, 0);
-
-            // Face 0: vertices 2, 3, 0
-            const face0Center = new THREE.Vector3().addVectors(v2, v3).add(v0).divideScalar(3);
-            const e0_1 = new THREE.Vector3().subVectors(v3, v2);
-            const e0_2 = new THREE.Vector3().subVectors(v0, v2);
-            let n0 = new THREE.Vector3().crossVectors(e0_1, e0_2).normalize();
-            // Ensure normal points outward
-            if (n0.dot(face0Center.clone().sub(center)) < 0) n0.negate();
-
-            // Face 1: vertices 0, 3, 1
-            const face1Center = new THREE.Vector3().addVectors(v0, v3).add(v1).divideScalar(3);
-            const e1_1 = new THREE.Vector3().subVectors(v3, v0);
-            const e1_2 = new THREE.Vector3().subVectors(v1, v0);
-            let n1 = new THREE.Vector3().crossVectors(e1_1, e1_2).normalize();
-            if (n1.dot(face1Center.clone().sub(center)) < 0) n1.negate();
-
-            // Face 2: vertices 1, 3, 2
-            const face2Center = new THREE.Vector3().addVectors(v1, v3).add(v2).divideScalar(3);
-            const e2_1 = new THREE.Vector3().subVectors(v3, v1);
-            const e2_2 = new THREE.Vector3().subVectors(v2, v1);
-            let n2 = new THREE.Vector3().crossVectors(e2_1, e2_2).normalize();
-            if (n2.dot(face2Center.clone().sub(center)) < 0) n2.negate();
-
-            // Face 3: vertices 2, 0, 1
-            const face3Center = new THREE.Vector3().addVectors(v2, v0).add(v1).divideScalar(3);
-            const e3_1 = new THREE.Vector3().subVectors(v0, v2);
-            const e3_2 = new THREE.Vector3().subVectors(v1, v2);
-            let n3 = new THREE.Vector3().crossVectors(e3_1, e3_2).normalize();
-            if (n3.dot(face3Center.clone().sub(center)) < 0) n3.negate();
-
-            return [n0, n1, n2, n3];
-        }
-
         case 'd6':
             // Box/Cube face normals
             return [
@@ -1395,47 +1347,17 @@ function computeFaceNormalsForDiceType(diceType: string, geometry: THREE.BufferG
                 new THREE.Vector3(0, 0, -1)   // Back
             ];
 
-        case 'd8': {
-            // Octahedron face normals
-            const oct = 1 / Math.sqrt(3);
-            return [
-                new THREE.Vector3(oct, oct, oct),
-                new THREE.Vector3(-oct, oct, oct),
-                new THREE.Vector3(-oct, -oct, oct),
-                new THREE.Vector3(oct, -oct, oct),
-                new THREE.Vector3(oct, oct, -oct),
-                new THREE.Vector3(-oct, oct, -oct),
-                new THREE.Vector3(-oct, -oct, -oct),
-                new THREE.Vector3(oct, -oct, -oct)
-            ];
-        }
-
+        case 'd4':
+        case 'd8':
         case 'd10':
-            // A kite is two triangles running together in the buffer, so its
-            // normal comes from the geometry itself. The fixed table this used
-            // to return tilted every face upward and matched no face of the
-            // solid, so a d10 (or percentile die) with no atlas never read.
-            return deriveFaceNormalsFromGeometry(geometry, 10);
-
-        case 'd12': {
-            // Dodecahedron face normals (12 pentagonal faces)
-            const phi = (1 + Math.sqrt(5)) / 2;
-            const invPhi = 1 / phi;
-            return [
-                new THREE.Vector3(0, phi, invPhi).normalize(),
-                new THREE.Vector3(invPhi, phi, 0).normalize(),
-                new THREE.Vector3(invPhi, 0, phi).normalize(),
-                new THREE.Vector3(-invPhi, 0, phi).normalize(),
-                new THREE.Vector3(-invPhi, phi, 0).normalize(),
-                new THREE.Vector3(0, invPhi, phi).normalize(),
-                new THREE.Vector3(0, phi, -invPhi).normalize(),
-                new THREE.Vector3(invPhi, 0, -phi).normalize(),
-                new THREE.Vector3(0, -invPhi, -phi).normalize(),
-                new THREE.Vector3(0, -phi, -invPhi).normalize(),
-                new THREE.Vector3(-invPhi, 0, -phi).normalize(),
-                new THREE.Vector3(0, -phi, invPhi).normalize()
-            ];
-        }
+        case 'd12':
+            // Read from the geometry itself, in the order its faces (and the
+            // fallback art laid onto them) come in the buffer. The fixed
+            // tables these used to return walked the faces in their own
+            // order, which is not three.js's: a d4, d8 or d12 with no atlas
+            // reported the number of a different face, and a d10's kites
+            // tilted upward to match no face at all.
+            return deriveFaceNormalsFromGeometry(geometry, dieFaceCountOfSolid(diceType));
 
         case 'd20': {
             // Icosahedron face normals (20 triangular faces)

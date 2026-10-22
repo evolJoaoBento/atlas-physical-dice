@@ -92,3 +92,32 @@ test('a d100 the pack gives no shape is a d10 numbered in tens', () => {
         });
     }
 });
+
+// A pack that lays out no faces of its own (no pack.json, or one that failed to load) falls back to the kit's
+// built-in face tables. Each one must name the geometry's own face i, the face the fallback art is printed on,
+// or the die reads a number from a different face, or none at all.
+test('with no pack face layout, every face direction points along its own face and reads its number', () => {
+    const packs: DicePack[] = [{}, { bevel: { enabled: false } }];
+    const wrong: string[] = [];
+    for (const shapeless of packs) {
+        for (const type of DIE_TYPES) {
+            const label = `${JSON.stringify(shapeless)} ${type}`;
+            const geometry = dieGeometry(type, 1, shapeless);
+            const { normals, numbers } = dieFaceNormals(type, geometry);
+            assert.equal(normals.length, FACE_COUNT[type], `${label} faces`);
+            assert.deepEqual(numbers.slice().sort((a, b) => a - b), NUMBERS[type], `${label} numbers`);
+            const up = new THREE.Vector3(0, type === 'd4' ? -1 : 1, 0);
+            const centres = normals.map((_, j) => faceCentroid(geometry, j, normals.length).normalize());
+            normals.forEach((n, i) => {
+                // Face i's own centre, and no other face's, is the one its direction points at.
+                const along = centres.map((c) => n.x * c.x + n.y * c.y + n.z * c.z);
+                const nearest = along.indexOf(Math.max(...along));
+                if (!(along[i] > 0.7 && nearest === i)) wrong.push(`${label} face ${i} points at face ${nearest}`);
+                const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(n.x, n.y, n.z), up);
+                const read = readFace(type, normals, numbers, q, 0.01).face;
+                if (read !== numbers[i]) wrong.push(`${label} face ${i} reads ${read}, not ${numbers[i]}`);
+            });
+        }
+    }
+    assert.deepEqual(wrong, []);
+});
