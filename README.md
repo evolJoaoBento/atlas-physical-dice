@@ -36,7 +36,7 @@ A dice pack is a folder with the dice's face art, colours, sizes and finish.
 1. Settings → **Dice pack**: pick a pack from the list.
 2. **Make your own:** click the folder button next to **Dice pack**, copy `Texture-Pack-Default` under a new name, edit its images and `pack.json`, click the reload button, then pick it. The format is in [dice/README.md](dice/README.md).
 
-The default pack (white with black numbers) belongs to the plugin and is rewritten on update, so always edit a copy.
+Packs live in `<your vault>/.obsidian/atlas-dice-packs/`, a folder shared with the Tabletop plugin so both roll the same dice. Packs from this plugin's old `dice/` folder are copied there once on first load; the old folder is left as it was. The default pack (white with black numbers) is written only if its files are missing, so changes you make to it stay, but a copy under a new name is the safer way to edit.
 
 ## Settings
 

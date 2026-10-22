@@ -44,11 +44,14 @@ export interface DiceSettings {
 
     // Face calibration mapping
     /**
-     * Folder under the plugin's dice/ directory holding one atlas per die type,
+     * Folder under the shared atlas-dice-packs/ directory holding one atlas per die type,
      * named `<type>_Numbers.png`. Copy the folder, edit the images, pick it
      * here - that is the whole of making a custom set.
      */
     texturePack: string;
+
+    /** Set once the old per-plugin dice/ folder has been copied to the shared packs folder. */
+    packsMigrated?: boolean;
 
     faceMapping: { [faceIndex: number]: number };
 
@@ -216,7 +219,7 @@ export class DiceSettingTab extends PluginSettingTab {
 
         new Setting(diceSection)
             .setName('Dice pack')
-            .setDesc('A folder under the plugin’s dice/ directory. Its pack.json describes the whole set - the face sheets and normal maps to use, how the art is laid out on each die, how big each one is, how it is finished, and whether its edges are taken off. Copy the folder and edit it to make your own.')
+            .setDesc('A folder under the shared atlas-dice-packs/ directory in your vault’s config folder, which Tabletop reads too. Its pack.json describes the whole set - the face sheets and normal maps to use, how the art is laid out on each die, how big each one is, how it is finished, and whether its edges are taken off. Copy the folder and edit it to make your own.')
             .addDropdown(dropdown => {
                 // display() is synchronous and listing folders is not, so the
                 // pack in use goes in on its own and the rest of the list joins

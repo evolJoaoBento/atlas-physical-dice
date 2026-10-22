@@ -42,13 +42,14 @@ const FALLBACK_COLOUR = '#ff4444';
 /** What the plugin needs of itself to find the packs. */
 export interface LookHost {
     app: App;
-    manifest: { dir?: string };
+    /** The shared folder the packs live in. */
+    packsDir: string;
     listTexturePacks(): Promise<string[]>;
 }
 
 /** One pack on disk, as the looks and the dice packs tab list it. */
 export interface PackEntry {
-    /** Folder name under `dice/`: the look's id. */
+    /** Folder name under the packs folder: the look's id. */
     folder: string;
     /** As shown in Atlas: the pack's `name`, else its folder. */
     name: string;
@@ -509,7 +510,7 @@ export class PackLook {
     private async sheet(file: string | undefined): Promise<ImageBitmap | null> {
         if (!file) return null;
         const adapter = this.host.app.vault.adapter;
-        const path = `${this.host.manifest.dir}/dice/${this.folder}/${file}`;
+        const path = `${this.host.packsDir}/${this.folder}/${file}`;
         if (!(await adapter.exists(path))) return null;
         const bytes = await adapter.readBinary(path);
         return createImageBitmap(new Blob([bytes]));
@@ -614,7 +615,7 @@ export async function readPacks(host: LookHost, previews: PackPreviews | null): 
     for (const folder of folders) {
         let pack: DicePack = {};
         try {
-            const read = JSON.parse(await adapter.read(`${host.manifest.dir}/dice/${folder}/pack.json`)) as unknown;
+            const read = JSON.parse(await adapter.read(`${host.packsDir}/${folder}/pack.json`)) as unknown;
             if (read && typeof read === 'object') pack = read;
         } catch {
             // A pack without a manifest still has its sheets, named after their die.
@@ -680,7 +681,7 @@ export class AtlasLooks {
     async refresh(): Promise<void> {
         const generation = ++this.generation;
         this.dispose();
-        if (!this.available || !this.host.manifest.dir) {
+        if (!this.available) {
             this.packs = [];
             this.notify();
             return;

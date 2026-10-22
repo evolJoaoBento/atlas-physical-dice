@@ -1,4 +1,3 @@
-import type { DataAdapter } from 'obsidian';
 import d4 from './dice/Texture-Pack-Default/d4_Numbers.png';
 import d6 from './dice/Texture-Pack-Default/d6_Numbers.png';
 import d8 from './dice/Texture-Pack-Default/d8_Numbers.png';
@@ -8,7 +7,7 @@ import d12 from './dice/Texture-Pack-Default/d12_Numbers.png';
 import d20 from './dice/Texture-Pack-Default/d20_Numbers.png';
 import packJson from './dice/Texture-Pack-Default/pack.json';
 
-/** The folder the default set lives in, under the plugin's `dice/` directory. */
+/** The folder the default set lives in, under the shared packs folder. */
 export const DEFAULT_PACK = 'Texture-Pack-Default';
 
 /**
@@ -30,25 +29,14 @@ const FILES: Record<string, Uint8Array> = {
     'd20_Numbers.png': d20,
 };
 
-/** Records which release wrote the folder, so an update replaces stale art. */
-const STAMP = '.version';
-
 /**
- * Write the default pack into `<pluginDir>/dice/` unless this release already
- * did. The folder belongs to the plugin: a custom set is a copy under another
- * name, so replacing it on update loses nothing.
+ * The default set as files for the shared packs folder, keyed by path under it.
+ * The folder writes only the files it lacks, so a pack the user edited in place
+ * stays as they left it.
  */
-export async function ensureDefaultPack(adapter: DataAdapter, pluginDir: string, version: string): Promise<void> {
-    const dir = `${pluginDir}/dice/${DEFAULT_PACK}`;
-    const stamp = `${dir}/${STAMP}`;
-    if (await adapter.exists(stamp) && (await adapter.read(stamp)).trim() === version) return;
-
-    if (!(await adapter.exists(`${pluginDir}/dice`))) await adapter.mkdir(`${pluginDir}/dice`);
-    if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
-    for (const [name, bytes] of Object.entries(FILES)) {
-        const copy = bytes.slice();
-        await adapter.writeBinary(`${dir}/${name}`, copy.buffer);
-    }
-    await adapter.write(`${dir}/pack.json`, JSON.stringify(packJson, null, 2) + '\n');
-    await adapter.write(stamp, version);
+export function defaultPackFiles(): Record<string, ArrayBuffer> {
+    const files: Record<string, ArrayBuffer> = {};
+    for (const [name, bytes] of Object.entries(FILES)) files[`${DEFAULT_PACK}/${name}`] = bytes.slice().buffer;
+    files[`${DEFAULT_PACK}/pack.json`] = new TextEncoder().encode(JSON.stringify(packJson, null, 2) + '\n').buffer;
+    return files;
 }

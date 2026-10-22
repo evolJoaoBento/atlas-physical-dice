@@ -23,7 +23,7 @@ const PACK_TYPES = ['d4', 'd6', 'd8', 'd10', 'd100', 'd12', 'd20'];
 
 interface PreviewHost {
     app: App;
-    manifest: { dir?: string };
+    packsDir: string;
 }
 
 function waitFrame(): Promise<void> {
@@ -97,10 +97,8 @@ export class PackPreviews {
     }
 
     private async draw(folder: string, pack: DicePack): Promise<string | null> {
-        const dir = this.host.manifest.dir;
-        if (!dir) return null;
         const adapter = this.host.app.vault.adapter;
-        const root = `${dir}/dice/${folder}`;
+        const root = `${this.host.packsDir}/${folder}`;
 
         // The sheets as blob: URLs read by hand, so the picture can be read back from the canvas.
         const urls: string[] = [];

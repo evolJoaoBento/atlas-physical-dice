@@ -7,7 +7,8 @@ import { AtlasColours } from './atlas-colours';
 import { DicePacksTab } from './dice-packs-tab';
 import { PackPreviews } from './pack-previews';
 import { appendDiceIcon } from './dice-icons';
-import { ensureDefaultPack } from './default-pack';
+import { defaultPackFiles } from './default-pack';
+import { ensureDefaultPack, listPacks, loadPack, migratePacks, packFileUrls, packsFolder, type PackFs } from './kit/packs';
 import { caughtMessage } from './kit/caught';
 import type { DieType } from './kit/faces';
 
@@ -28,6 +29,24 @@ export default class D20DicePlugin extends Plugin {
     private packsTab: DicePacksTab | null = null;
     /** Names of the collection colours dice were added in here, by colour. */
     private readonly collectionColourNames = new Map<string, string>();
+    /** The shared folder the dice packs live in. */
+    get packsDir(): string {
+        return packsFolder(this.app.vault.configDir);
+    }
+
+    /** Obsidian's adapter, as the pack kit sees it. */
+    get packFs(): PackFs {
+        const adapter = this.app.vault.adapter;
+        return {
+            exists: (p) => adapter.exists(p),
+            list: (p) => adapter.list(p),
+            read: (p) => adapter.read(p),
+            readBinary: (p) => adapter.readBinary(p),
+            writeBinary: (p, d) => adapter.writeBinary(p, d),
+            mkdir: (p) => adapter.mkdir(p),
+            getResourcePath: (p) => adapter.getResourcePath(p)
+        };
+    }
     private diceOverlay: HTMLElement | null = null;
     private dice: D20Dice | null = null;
     /** Closes the column of colours a right-click opened over a die, when one is showing. */
@@ -49,14 +68,19 @@ export default class D20DicePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
-        // A community install arrives without the pack folder; lay it out.
-        if (this.manifest.dir) {
-            try {
-                await ensureDefaultPack(this.app.vault.adapter, this.manifest.dir, this.manifest.version);
-            } catch (error) {
-                console.error('Could not write the default dice pack:', error);
-                new Notice('Could not write the default dice pack.');
+        // Packs live in a folder shared with Tabletop. Bring over any the old
+        // per-plugin folder holds (once, copying and never deleting), then lay
+        // out the default, which a community install arrives without.
+        try {
+            if (!this.settings.packsMigrated && this.manifest.dir) {
+                await migratePacks(this.packFs, `${this.manifest.dir}/dice`, this.packsDir);
+                this.settings.packsMigrated = true;
+                await this.writeSettings();
             }
+            await ensureDefaultPack(this.packFs, this.packsDir, defaultPackFiles());
+        } catch (error) {
+            console.error('Could not set up the dice packs folder:', error);
+            new Notice('Could not set up the dice packs folder.');
         }
 
         this.addCommand({
@@ -606,7 +630,7 @@ export default class D20DicePlugin extends Plugin {
     /**
      * Resource URLs for the selected texture pack, keyed by die type.
      *
-     * A pack is a folder under the plugin's own `dice/` directory holding
+     * A pack is a folder under the shared `atlas-dice-packs/` directory holding
      * `<type>_Numbers.png`. `getResourcePath` turns a vault path into an
      * `app://` URL the texture loader takes as-is, so nothing has to be read,
      * encoded, or stored - copying a folder and editing the images is the whole
@@ -617,20 +641,8 @@ export default class D20DicePlugin extends Plugin {
      */
     private resolvePackFiles(key: 'texture' | 'normal'): Record<string, string> {
         const pack = this.settings.texturePack;
-        const dir = this.manifest.dir;
-        if (!pack || !dir) return {};
-
-        const adapter = this.app.vault.adapter;
-        const urls: Record<string, string> = {};
-        for (const type of D20DicePlugin.PACK_TYPES) {
-            const named = this.packConfig?.dice?.[type]?.[key];
-            // A pack with no manifest still works: the sheets are named after
-            // their die, and there is no normal map unless one is asked for.
-            const file = named || (key === 'texture' ? `${type}_Numbers.png` : null);
-            if (!file) continue;
-            urls[type] = adapter.getResourcePath(`${dir}/dice/${pack}/${file}`);
-        }
-        return urls;
+        if (!pack) return {};
+        return packFileUrls(this.packFs, this.packsDir, pack, this.packConfig, key);
     }
 
     /** The chosen pack's manifest, once read. */
@@ -647,15 +659,10 @@ export default class D20DicePlugin extends Plugin {
      */
     private async loadPackConfig(): Promise<DicePack | null> {
         const pack = this.settings.texturePack;
-        const dir = this.manifest.dir;
-        if (!pack || !dir) return null;
-        try {
-            const raw = await this.app.vault.adapter.read(`${dir}/dice/${pack}/pack.json`);
-            return JSON.parse(raw) as DicePack;
-        } catch (error) {
-            console.warn(`No usable pack.json in ${pack}:`, error);
-            return null;
-        }
+        if (!pack) return null;
+        const config = await loadPack(this.packFs, this.packsDir, pack);
+        if (!config) console.warn(`No usable pack.json in ${pack}`);
+        return config;
     }
 
     /** Load the pack and hand every part of it to the renderer. */
@@ -668,13 +675,11 @@ export default class D20DicePlugin extends Plugin {
     }
 
     /**
-     * Open the `dice/` folder in the system file manager, where a new pack is
+     * Open the shared packs folder in the system file manager, where a new pack is
      * dropped in. Mobile has no file manager to hand it to, so it gets the path.
      */
     async openPacksFolder(): Promise<void> {
-        const dir = this.manifest.dir;
-        if (!dir) return;
-        const packsDir = `${dir}/dice`;
+        const packsDir = this.packsDir;
         const adapter = this.app.vault.adapter;
         if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
             new Notice(`Dice packs live in ${packsDir}`);
@@ -689,17 +694,7 @@ export default class D20DicePlugin extends Plugin {
 
     /** Pack folders available to choose from, for the settings dropdown. */
     async listTexturePacks(): Promise<string[]> {
-        const dir = this.manifest.dir;
-        if (!dir) return [];
-        try {
-            const listing = await this.app.vault.adapter.list(`${dir}/dice`);
-            return listing.folders
-                .map((folder) => folder.split('/').pop() || '')
-                .filter(Boolean)
-                .sort();
-        } catch {
-            return [];
-        }
+        return listPacks(this.packFs, this.packsDir);
     }
 
     async loadSettings() {
