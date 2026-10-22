@@ -71,16 +71,23 @@ export default class D20DicePlugin extends Plugin {
         // Packs live in a folder shared with Tabletop. Bring over any the old
         // per-plugin folder holds (once, copying and never deleting), then lay
         // out the default, which a community install arrives without.
+        // Each step has its own guard: a failed copy must not leave the user
+        // without the default pack, and a failed copy is retried next load.
         try {
             if (!this.settings.packsMigrated && this.manifest.dir) {
                 await migratePacks(this.packFs, `${this.manifest.dir}/dice`, this.packsDir);
                 this.settings.packsMigrated = true;
                 await this.writeSettings();
             }
+        } catch (error) {
+            console.error('Could not copy the old dice packs:', error);
+            new Notice('Could not copy the old dice packs.');
+        }
+        try {
             await ensureDefaultPack(this.packFs, this.packsDir, defaultPackFiles());
         } catch (error) {
-            console.error('Could not set up the dice packs folder:', error);
-            new Notice('Could not set up the dice packs folder.');
+            console.error('Could not write the default dice pack:', error);
+            new Notice('Could not write the default dice pack.');
         }
 
         this.addCommand({
@@ -623,9 +630,6 @@ export default class D20DicePlugin extends Plugin {
         this.updateRollButtonTextCallback = null;
         this.updateDiceCountDisplayCallback = null;
     }
-
-    /** Die types a pack can carry art for. */
-    private static readonly PACK_TYPES = ['d4', 'd6', 'd8', 'd10', 'd100', 'd12', 'd20'];
 
     /**
      * Resource URLs for the selected texture pack, keyed by die type.

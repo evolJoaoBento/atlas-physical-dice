@@ -76,31 +76,35 @@ export async function ensureDefaultPack(fs: PackFs, folder: string, files: Recor
     }
 }
 
-async function copyFolder(fs: PackFs, from: string, to: string): Promise<void> {
+/** Copy what the target lacks, never overwriting; returns how many files it wrote. */
+async function copyFolder(fs: PackFs, from: string, to: string): Promise<number> {
     await ensureFolder(fs, to);
     const listing = await fs.list(from);
+    let written = 0;
     for (const file of listing.files) {
         const name = lastSegment(file);
         // `.version` stamped the old per-plugin default; it means nothing here.
         if (name.startsWith('.')) continue;
+        if (await fs.exists(`${to}/${name}`)) continue;
         await fs.writeBinary(`${to}/${name}`, await fs.readBinary(file));
+        written++;
     }
-    for (const sub of listing.folders) await copyFolder(fs, sub, `${to}/${lastSegment(sub)}`);
+    for (const sub of listing.folders) written += await copyFolder(fs, sub, `${to}/${lastSegment(sub)}`);
+    return written;
 }
 
 /**
- * Copy pack folders from the old per-plugin folder into the shared one, skipping
- * any the shared folder already has. Never deletes. Returns how many it copied.
+ * Copy pack folders from the old per-plugin folder into the shared one. Files
+ * the shared folder already has are left alone, so a run that failed midway is
+ * finished by the next one and a pack the user changed is never overwritten.
+ * Never deletes. Returns how many packs it copied something into.
  */
 export async function migratePacks(fs: PackFs, from: string, to: string): Promise<number> {
     if (!(await fs.exists(from))) return 0;
     await ensureFolder(fs, to);
-    const have = new Set(await listPacks(fs, to));
     let copied = 0;
     for (const pack of await listPacks(fs, from)) {
-        if (have.has(pack)) continue;
-        await copyFolder(fs, `${from}/${pack}`, `${to}/${pack}`);
-        copied++;
+        if (await copyFolder(fs, `${from}/${pack}`, `${to}/${pack}`) > 0) copied++;
     }
     return copied;
 }

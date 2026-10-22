@@ -100,3 +100,22 @@ test('migratePacks with no old folder copies nothing', async () => {
     const m = memoryFs();
     assert.equal(await migratePacks(m.fs, 'old', 'new'), 0);
 });
+
+test('migratePacks finishes a pack a failed run left half copied', async () => {
+    const m = memoryFs({ 'old/A/a.png': 'one', 'old/A/b.png': 'two', 'old/A/c.png': 'three' });
+    const write = m.fs.writeBinary;
+    let count = 0;
+    m.fs.writeBinary = async (p, d) => {
+        if (++count === 2) throw new Error('disk full');
+        await write(p, d);
+    };
+    await assert.rejects(migratePacks(m.fs, 'old', 'new'));
+    assert.equal(m.files.size, 3 + 1);
+    const first = [...m.files.keys()].filter((k) => k.startsWith('new/A/'));
+    assert.equal(first.length, 1);
+    const kept = m.text(first[0]);
+    m.fs.writeBinary = write;
+    assert.equal(await migratePacks(m.fs, 'old', 'new'), 1);
+    for (const f of ['a', 'b', 'c']) assert.ok(m.files.has(`new/A/${f}.png`), f);
+    assert.equal(m.text(first[0]), kept);
+});
