@@ -1094,6 +1094,20 @@ export class D20Dice {
         this.wake();
     }
 
+    /** How many dice of `diceType` are on the tray: in every colour, or in `color` only (null: the pack's own). */
+    countOf(diceType: string, color?: string | null): number {
+        let count = 0;
+        for (let i = 0; i < this.diceTypeArray.length; i++) {
+            if (this.diceTypeArray[i] === diceType && (color === undefined || this.diceColorArray[i] === color)) count++;
+        }
+        return count;
+    }
+
+    /** The colours of the dice of `diceType` on the tray, in the order they were added (null: the pack's own). */
+    coloursOf(diceType: string): Array<string | null> {
+        return this.diceTypeArray.flatMap((type, i) => (type === diceType ? [this.diceColorArray[i] ?? null] : []));
+    }
+
     /** Removes the last die of `diceType`; with `color`, the last one added in that colour. */
     removeSingleDice(diceType: string, color?: string | null): boolean {
         // Find the last dice of the specified type

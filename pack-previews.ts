@@ -176,3 +176,58 @@ export class PackPreviews {
         }
     }
 }
+
+/**
+ * A picture of each die type as the tray builds it now, from its own engine and pack, for the dice tray's buttons (as
+ * Tabletop's tray shows its dice). One WebGL renderer draws them in turn, each copied onto a canvas of its own that
+ * the button shows, and is given back at once. The tray's sheets may come from the vault in a way that does not let a
+ * picture be read back, so the canvases are shown as they are rather than turned into `data:` URLs.
+ */
+export async function diePictures(engine: D20Dice, types: readonly string[], pixels = 80): Promise<Map<string, HTMLCanvasElement>> {
+    const pictures = new Map<string, HTMLCanvasElement>();
+    const meshes = types.map((type) => {
+        const mesh = engine.createDieMesh(type);
+        fitToView(mesh);
+        mesh.quaternion.setFromEuler(new THREE.Euler(-0.5, 0.45, 0.1));
+        return { type, mesh };
+    });
+    const started = Date.now();
+    while (meshes.some(({ mesh }) => !textureReady(mesh)) && Date.now() - started < LOAD_TIMEOUT_MS) await delay(50);
+    let renderer: THREE.WebGLRenderer | null = null;
+    try {
+        renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setPixelRatio(1);
+        renderer.setSize(pixels, pixels, false);
+        renderer.setClearColor(0x000000, 0);
+        const scene = new THREE.Scene();
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 2.6));
+        const key = new THREE.DirectionalLight(0xffffff, 3.2);
+        key.position.set(1, 2, 4);
+        scene.add(key);
+        const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+        camera.position.set(0, 0, 5.2);
+        camera.lookAt(0, 0, 0);
+        for (const { type, mesh } of meshes) {
+            scene.add(mesh);
+            renderer.render(scene, camera);
+            scene.remove(mesh);
+            const canvas = createEl('canvas', { cls: 'dice-tray-picture' });
+            canvas.width = canvas.height = pixels;
+            canvas.getContext('2d')?.drawImage(renderer.domElement, 0, 0);
+            pictures.set(type, canvas);
+        }
+    } catch (error) {
+        console.warn('Atlas VTT Physical Dice: could not draw the tray\'s dice:', error);
+    } finally {
+        // The meshes' own geometry and material go; the textures are the tray's, and stay.
+        for (const { mesh } of meshes) {
+            mesh.geometry.dispose();
+            (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((material) => material.dispose());
+        }
+        if (renderer) {
+            renderer.dispose();
+            renderer.forceContextLoss();
+        }
+    }
+    return pictures;
+}

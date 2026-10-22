@@ -5,8 +5,7 @@ import { AtlasLink, sendRollToAtlas, useAtlasLink } from './atlas-bridge';
 import { AtlasLooks } from './atlas-looks';
 import { AtlasColours } from './atlas-colours';
 import { DicePacksTab } from './dice-packs-tab';
-import { PackPreviews } from './pack-previews';
-import { appendDiceIcon } from './dice-icons';
+import { diePictures, PackPreviews } from './pack-previews';
 import { defaultPackFiles } from './default-pack';
 import { ensureDefaultPack, listPacks, loadPack, migratePacks, packFileUrls, packsFolder, type PackFs } from './kit/packs';
 import { caughtMessage } from './kit/caught';
@@ -50,13 +49,14 @@ export default class D20DicePlugin extends Plugin {
     private diceOverlay: HTMLElement | null = null;
     private dice: D20Dice | null = null;
     /** Closes the column of colours a right-click opened over a die, when one is showing. */
-    private closeColorPicker: (() => void) | null = null;
     private isVisible = false;
     private controlsPanel: HTMLElement | null = null;
     private isDraggingControls = false;
     private controlsDragOffset = { x: 0, y: 0 };
     private updateRollButtonTextCallback: ((diceType: string) => void) | null = null;
     private updateDiceCountDisplayCallback: (() => void) | null = null;
+    /** Draws the pictures on the tray's dice again, from the pack the tray holds now. */
+    private redrawTrayPictures: (() => Promise<void>) | null = null;
 
     // Everything the overlay registers, so hideDiceOverlay can undo all of it.
     private overlayCleanups: Array<() => void> = [];
@@ -164,38 +164,34 @@ export default class D20DicePlugin extends Plugin {
         setIcon(closeBtn, 'x');
         closeBtn.addEventListener('click', () => this.hideDiceOverlay());
 
-        // Dice row: one button per type, adding a die; the badge counts them.
-        const diceButtonsContainer = this.controlsPanel.createDiv('dice-type-grid');
+        // The tray, as Tabletop's (Atlas's own dice tray, its classes): a picture of each die with its count, the grip
+        // under it taking one back, right-click for its colours (laid out the same way), then Roll and Clear.
+        this.controlsPanel.addClass('atlas-vtt-plugin');
+        const trayContent = this.controlsPanel.createDiv('atlas-dice-tray__content');
+        const diceButtonsContainer = trayContent.createDiv('atlas-dice-tray__dice');
+        const coloursRow = trayContent.createDiv('dice-tray-colours');
+        coloursRow.hide();
+        let coloursFor: string | null = null;
 
         // Result display
-        const resultElement = this.controlsPanel.createDiv({ cls: 'dice-result-overlay' });
+        const resultElement = trayContent.createDiv({ cls: 'dice-result-overlay' });
 
         // Dice status display
-        const statusElement = this.controlsPanel.createDiv({ cls: 'dice-status-display' });
+        const statusElement = trayContent.createDiv({ cls: 'dice-status-display' });
 
         // Reroll caught dice button
-        const rerollButton = this.controlsPanel.createEl('button', {
+        const rerollButton = trayContent.createEl('button', {
             text: 'Reroll caught dice',
             cls: 'dice-reroll-button'
         });
         rerollButton.hide();
         rerollButton.disabled = true;
 
-        // Formula bar: what is on the table, then clear and roll.
-        const formulaBar = this.controlsPanel.createDiv('dice-formula-bar');
-        const diceCountDisplay = formulaBar.createDiv({ cls: 'dice-count-display' });
-        const actions = formulaBar.createDiv('dice-formula-actions');
-
-        const clearButton = actions.createEl('button', {
-            cls: 'dice-clear-button',
-            attr: { 'aria-label': 'Clear all dice' }
-        });
-        setIcon(clearButton, 'trash-2');
-
-        const rollButton = actions.createEl('button', {
-            text: 'Roll',
-            cls: 'mod-cta dice-roll-button'
-        });
+        // What is on the table, as Atlas's tray writes a formula, then Roll and Clear.
+        const formula = trayContent.createEl('p', { cls: 'atlas-dice-tray__formula', attr: { role: 'status', 'aria-live': 'polite' } });
+        const actions = trayContent.createDiv('atlas-dice-tray__actions');
+        const rollButton = actions.createEl('button', { text: 'Roll', cls: 'btn btn--default btn--sm atlas-dice-tray__roll' });
+        const clearButton = actions.createEl('button', { text: 'Clear', cls: 'btn btn--outline btn--sm', attr: { 'aria-label': 'Clear all dice' } });
 
         // Update roll button text based on dice type
         const updateRollButtonText = (diceType: string) => {
@@ -205,29 +201,85 @@ export default class D20DicePlugin extends Plugin {
 
         // Atlas VTT's order, percentile last.
         const diceTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
-        const badges = new Map<string, HTMLElement>();
-        const typeButtons = new Map<string, HTMLElement>();
+        // A picture of each die of the pack, drawn once its sheets are in (the die's name until then).
+        let pictures = new Map<string, HTMLCanvasElement>();
+        const total = (): number => Object.values(this.settings.diceCounts).reduce((sum, count) => sum + count, 0);
+
+        /** A tray cell: a face button with its count, and the grip under it taking one back (or the space it would take). */
+        const trayCell = (into: HTMLElement, face: (button: HTMLButtonElement) => void, count: number, label: string, onAdd: () => void, onTakeBack: () => void, takeBackLabel: string): HTMLButtonElement => {
+            const cell = into.createDiv('atlas-dice-tray__die');
+            const button = cell.createEl('button', { cls: 'atlas-dice-tray__face', attr: { type: 'button', 'aria-label': label } });
+            face(button);
+            if (count > 0) button.createSpan({ cls: 'atlas-dice-tray__count', text: String(count), attr: { 'aria-hidden': 'true' } });
+            button.disabled = total() >= 50;
+            button.addEventListener('click', onAdd);
+            if (count > 0) {
+                const grip = cell.createEl('button', { cls: 'atlas-dice-tray__grip', attr: { type: 'button', 'aria-label': takeBackLabel } });
+                setIcon(grip, 'minus');
+                grip.addEventListener('click', onTakeBack);
+            } else cell.createSpan({ cls: 'atlas-dice-tray__grip-space', attr: { 'aria-hidden': 'true' } });
+            return button;
+        };
 
         const updateDiceCountDisplay = () => {
             const counts = this.settings.diceCounts as Record<string, number>;
-            const totalDice = Object.values(counts).reduce((sum, count) => sum + count, 0);
-            const countText = Object.entries(counts)
-                .filter(([_, count]) => count > 0)
-                .map(([type, count]) => `${count}${type}`)
-                .join(' + ') || 'No dice';
-            diceCountDisplay.textContent = `${countText} · ${totalDice}/50`;
-            for (const [type, badge] of badges) {
+            const totalDice = total();
+            const terms = diceTypes.filter((type) => (counts[type] ?? 0) > 0).map((type) => `${counts[type]}${type}`);
+            formula.textContent = terms.length > 0 ? terms.join(' + ') : 'The tray is empty.';
+            formula.toggleClass('atlas-dice-tray__formula--empty', terms.length === 0);
+            diceButtonsContainer.empty();
+            for (const type of diceTypes) {
                 const count = counts[type] ?? 0;
-                badge.textContent = String(count);
-                badge.toggleClass('is-empty', count === 0);
-                typeButtons.get(type)?.toggleClass('is-selected', count > 0);
+                const button = trayCell(diceButtonsContainer, (face) => {
+                    const picture = pictures.get(type);
+                    if (picture) face.appendChild(picture);
+                    else face.createSpan({ cls: 'dice-tray-name', text: type });
+                }, count, count === 0 ? `Add a ${type}` : `Add a ${type}, ${count} in the tray`, () => void addDie(type, null, button), () => void removeDie(type), `Take one ${type} back`);
+                button.dataset.die = type;
+                button.title = `${type} · right-click: colours`;
+                // The colours picked for it, as a stripe of their shares under the picture (the pack's own leaves no mark).
+                const colours = this.dice?.coloursOf(type) ?? [];
+                if (colours.some((colour) => colour !== null)) {
+                    const stops = colours.map((colour, index) => `${colour ?? 'transparent'} ${(index / colours.length) * 100}% ${((index + 1) / colours.length) * 100}%`);
+                    button.addClass('has-colours');
+                    button.setCssProps({ '--dice-tray-colours': `linear-gradient(to right, ${stops.join(', ')})` });
+                }
+                button.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                    coloursFor = coloursFor === type ? null : type;
+                    updateDiceCountDisplay();
+                });
             }
+            drawColours();
             rollButton.disabled = totalDice === 0;
+            clearButton.toggle(totalDice > 0);
+        };
+
+        /** The open die's colours, in a row like the dice: a button of each colour (its badge how many), its grip taking one back. */
+        const drawColours = () => {
+            coloursRow.empty();
+            const type = coloursFor;
+            if (!type) { coloursRow.hide(); return; }
+            coloursRow.show();
+            coloursRow.createSpan({ cls: 'atlas-dice-tray__modifier-label', text: `${type} colours` });
+            const row = coloursRow.createDiv('atlas-dice-tray__dice');
+            const entries: Array<{ color: string | null; name: string; fromCollection?: boolean }> = [{ color: null, name: "The pack's colour" }, ...this.pickerColours().map((entry) => ({ color: entry.color, name: entry.name || entry.color, fromCollection: entry.fromCollection }))];
+            for (const entry of entries) {
+                const count = this.dice?.countOf(type, entry.color) ?? 0;
+                const button = trayCell(row, (face) => {
+                    face.addClass('dice-tray-colour');
+                    if (entry.color) face.setCssProps({ '--dice-swatch': entry.color });
+                    else face.addClass('is-pack-colour');
+                }, count, count === 0 ? `Add a ${entry.name} ${type}` : `Add a ${entry.name} ${type}, ${count} in the tray`, () => {
+                    if (entry.fromCollection && entry.color) this.collectionColourNames.set(entry.color, entry.name);
+                    void addDie(type, entry.color, button);
+                }, () => void removeDie(type, entry.color), `Take a ${entry.name} ${type} back`);
+                button.title = entry.name;
+            }
         };
 
         const addDie = async (type: string, color: string | null, button: HTMLElement): Promise<void> => {
-            const totalDice = Object.values(this.settings.diceCounts).reduce((sum, count) => sum + count, 0);
-            if (totalDice >= 50) {
+            if (total() >= 50) {
                 new Notice('The tray holds at most 50 dice');
                 button.addClass('is-at-limit');
                 window.setTimeout(() => button.removeClass('is-at-limit'), 1500);
@@ -240,7 +292,8 @@ export default class D20DicePlugin extends Plugin {
             await this.saveSettings();
         };
 
-        const removeDie = async (type: string): Promise<void> => {
+        /** Takes one of a die back: the last added, or with `color` (null: the pack's own) the last in that colour. */
+        const removeDie = async (type: string, color?: string | null): Promise<void> => {
             const counts = this.settings.diceCounts as Record<string, number>;
             if (!counts[type]) return;
             // The roll in flight tracks its dice by position.
@@ -248,38 +301,19 @@ export default class D20DicePlugin extends Plugin {
                 new Notice('Wait for the roll to finish');
                 return;
             }
-            if (this.dice && !this.dice.removeSingleDice(type)) return;
+            if (this.dice && !this.dice.removeSingleDice(type, color)) return;
             counts[type]--;
             updateDiceCountDisplay();
             this.refreshDiceView();
             await this.saveSettings();
         };
 
-        diceTypes.forEach(type => {
-            // As in Atlas: the die's glyph on the button, its name underneath.
-            const cell = diceButtonsContainer.createDiv('dice-type-cell');
-            const button = cell.createEl('button', {
-                cls: 'dice-type-button',
-                attr: { 'aria-label': `${type}: click to add, right-click for colours`, 'data-die': type }
-            });
-            appendDiceIcon(button, type);
-            badges.set(type, button.createSpan('dice-type-badge'));
-            typeButtons.set(type, button);
-            cell.createSpan({ cls: 'dice-type-name', text: type });
-
-            // Click: a die in the pack's colour. Right-click: a column of the dice
-            // colours over the button, each adding it in that colour; with no
-            // colours set up, right-click removes one.
-            button.addEventListener('click', () => void addDie(type, null, button));
-            button.addEventListener('contextmenu', (event) => {
-                event.preventDefault();
-                if (this.pickerColours().length === 0) {
-                    void removeDie(type);
-                    return;
-                }
-                this.showColorPicker(type, button, (color) => void addDie(type, color, button));
-            });
-        });
+        /** The pictures of the pack's dice, drawn again (the pack changed, or its sheets came in). */
+        this.redrawTrayPictures = async () => {
+            if (!this.dice) return;
+            pictures = await diePictures(this.dice, diceTypes);
+            if (this.controlsPanel) updateDiceCountDisplay();
+        };
         updateDiceCountDisplay();
 
         const clearAllDice = async () => {
@@ -561,45 +595,7 @@ export default class D20DicePlugin extends Plugin {
         this.dice.updateSize(rect.width, rect.height);
     }
 
-    /**
-     * A column of the dice colours rising from `button`, over the panel. It stays
-     * open for adding several dice, and closes on a click elsewhere or Escape.
-     */
-    private showColorPicker(type: string, button: HTMLElement, onPick: (color: string) => void): void {
-        this.closeColorPicker?.();
-        const rect = button.getBoundingClientRect();
-        const picker = document.body.createDiv({ cls: 'dice-color-picker', attr: { role: 'group', 'aria-label': `Add a ${type} in a colour` } });
-        picker.setCssStyles({ left: `${rect.left + rect.width / 2}px`, top: `${rect.top}px` });
-
-        for (const entry of this.pickerColours()) {
-            const circle = picker.createEl('button', {
-                cls: 'dice-color-circle',
-                attr: { 'aria-label': `${entry.name || entry.color} ${type}` }
-            });
-            circle.setCssProps({ '--dice-swatch': entry.color });
-            circle.addEventListener('click', () => {
-                if (entry.fromCollection) this.collectionColourNames.set(entry.color, entry.name || entry.color);
-                onPick(entry.color);
-            });
-        }
-
-        const close = (event: Event) => {
-            if (event instanceof KeyboardEvent && event.key !== 'Escape') return;
-            if (event.target instanceof Node && picker.contains(event.target)) return;
-            this.closeColorPicker?.();
-        };
-        document.addEventListener('mousedown', close, true);
-        document.addEventListener('keydown', close, true);
-        this.closeColorPicker = () => {
-            document.removeEventListener('mousedown', close, true);
-            document.removeEventListener('keydown', close, true);
-            picker.remove();
-            this.closeColorPicker = null;
-        };
-    }
-
     private hideDiceOverlay() {
-        this.closeColorPicker?.();
         for (const cleanup of this.overlayCleanups) cleanup();
         this.overlayCleanups = [];
 
@@ -632,6 +628,7 @@ export default class D20DicePlugin extends Plugin {
         this.isVisible = false;
         this.updateRollButtonTextCallback = null;
         this.updateDiceCountDisplayCallback = null;
+        this.redrawTrayPictures = null;
     }
 
     /**
@@ -679,6 +676,7 @@ export default class D20DicePlugin extends Plugin {
         this.dice.setPack(this.packConfig || {});
         this.dice.setPackTextures(this.resolvePackFiles('texture'), this.resolvePackFiles('normal'));
         this.dice.rebuildDice();
+        await this.redrawTrayPictures?.();
     }
 
     /**
