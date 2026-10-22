@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { DiceSettings } from './settings';
 import { readFace, type DieType } from './kit/faces';
-import { rollWaiting } from './kit/caught';
+import { rollWaiting, withoutDie } from './kit/caught';
 import {
     PACK_FALLBACK, dieColor, dieFaceCount, dieFaceNormals, dieFaceNumbers, dieGeometry, dieMaterial,
     diePhysicsShape, dieScale, dieSolid, packDie, packFinish, type DicePack, type PackDie
@@ -136,6 +136,14 @@ export interface RolledDie {
     color?: string | null;
 }
 
+/** A roll in flight ended because its dice were cleared from the tray: not a failure, and no result. */
+export class DiceClearedError extends Error {
+    constructor() {
+        super('The dice were cleared');
+        this.name = 'DiceClearedError';
+    }
+}
+
 export class D20Dice {
     private scene: THREE.Scene;
     private camera: THREE.OrthographicCamera;
@@ -230,6 +238,8 @@ export class D20Dice {
 
     public setPack(pack: DicePack): void {
         this.pack = pack || {};
+        // Face directions depend on the pack's solid and layout: read them again from this one.
+        D20Dice.forgetFaceNormals();
         this.wake();
     }
 
@@ -1054,6 +1064,29 @@ export class D20Dice {
         });
         this.originalMaterials.clear();
 
+        // No die is left to wait for: a caught or held record would otherwise block later throws.
+        this.diceStates = [];
+        this.lastRoll = null;
+        this.singleSettling.clear();
+        this.cancelSingleCaps();
+        if (this.rollTimeout) {
+            window.clearTimeout(this.rollTimeout);
+            this.rollTimeout = null;
+        }
+        if (this.rollTimeoutId) {
+            window.clearTimeout(this.rollTimeoutId);
+            this.rollTimeoutId = null;
+        }
+        this.multiRollResolve = null;
+        this.isRolling = false;
+        // A group roll in flight ends without a result: its dice are gone
+        if (this.currentMonitor !== null) {
+            const reject = this.monitorReject;
+            this.currentMonitor = null;
+            this.monitorReject = null;
+            reject?.(new DiceClearedError());
+        }
+
         for (const type of Object.keys(this.settings.diceCounts)) {
             (this.settings.diceCounts as Record<string, number>)[type] = 0;
         }
@@ -1095,6 +1128,7 @@ export class D20Dice {
                     this.draggedDiceIndex--;
                 }
 
+                this.forgetDieState(i);
                 this.wake();
                 return true; // Successfully removed
             }
@@ -1102,27 +1136,75 @@ export class D20Dice {
         return false; // No dice of this type found
     }
 
-    private checkSingleDiceSettling(diceIndex: number): void {
-        if (!this.isViewActive || !this.isRolling || diceIndex < 0 || diceIndex >= this.diceBodyArray.length) return;
-
+    /** Below the motion thresholds a lone throw is watched against. */
+    private isDieStill(diceIndex: number): boolean {
         const body = this.diceBodyArray[diceIndex];
+        if (!body) return false;
         const motionThreshold = this.settings.motionThreshold;
-        const velocityThreshold = 0.05 / motionThreshold;
-        const angularThreshold = 0.5 / motionThreshold;
+        return body.velocity.length() <= 0.05 / motionThreshold &&
+            body.angularVelocity.length() <= 0.5 / motionThreshold;
+    }
 
-        const velocity = body.velocity.length();
-        const angularVelocity = body.angularVelocity.length();
+    /** The longest a thrown die is watched before it is read or caught. */
+    private longestRollMs(): number {
+        return 6000 + this.settings.motionThreshold * 1000;
+    }
 
-        const isSettled = velocity <= velocityThreshold &&
-                         angularVelocity <= angularThreshold &&
-                         body.position.y <= -0.5;
+    /** Watch a lone die for at most the longest roll; a later throw of it starts the clock again. */
+    private armSingleCap(diceIndex: number): void {
+        const previous = this.singleCaps.get(diceIndex);
+        if (previous !== undefined) window.clearTimeout(previous);
+        this.singleCaps.set(diceIndex, window.setTimeout(() => {
+            this.singleCaps.delete(diceIndex);
+            this.capSingleDie(diceIndex);
+        }, this.longestRollMs()));
+    }
+
+    private cancelSingleCaps(): void {
+        this.singleCaps.forEach((timer) => window.clearTimeout(timer));
+        this.singleCaps.clear();
+    }
+
+    /**
+     * The longest roll is up for a lone die: still, it is read as usual; still
+     * moving (rocking on an edge or another die), it is caught and waits to be
+     * rolled again rather than leaving the roll open forever.
+     */
+    private capSingleDie(diceIndex: number): void {
+        if (!this.isViewActive || this.currentMonitor !== null) return;
+        if (diceIndex < 0 || diceIndex >= this.diceBodyArray.length || this.singleSettling.has(diceIndex)) return;
+        const state = this.diceStates[diceIndex];
+        if (state ? !state.isRolling : !this.isRolling) return;
+        if (this.isDieStill(diceIndex)) {
+            this.completeSingleDiceRoll(diceIndex);
+            return;
+        }
+        log(`🥅 Single dice ${diceIndex} still moving at the longest roll - caught`);
+        this.holdCaughtSingleDice(diceIndex);
+        this.isRolling = this.diceStates.some((s) => s.isRolling);
+        this.lastRoll = null;
+    }
+
+    private checkSingleDiceSettling(diceIndex: number, stillChecks = 0): void {
+        if (!this.isViewActive || !this.isRolling || diceIndex < 0 || diceIndex >= this.diceBodyArray.length) return;
+        // Already being read, or caught at the longest roll: no longer watched here
+        if (this.singleSettling.has(diceIndex)) return;
+        const state = this.diceStates[diceIndex];
+        if (state && !state.isRolling) return;
+
+        const still = this.isDieStill(diceIndex);
+        const stillFor = still ? stillChecks + 1 : 0;
+        // On the floor, still is settled. Resting on another die it never reaches
+        // the floor, so it settles by staying still for half a second instead (long
+        // enough that the top of a bounce is not taken for rest).
+        const isSettled = still && (this.diceBodyArray[diceIndex].position.y <= -0.5 || stillFor >= 5);
 
         if (isSettled) {
             log(`🎲 Single dice ${diceIndex} settled`);
             this.completeSingleDiceRoll(diceIndex);
         } else {
             // Check again in 100ms
-            window.setTimeout(() => this.checkSingleDiceSettling(diceIndex), 100);
+            window.setTimeout(() => this.checkSingleDiceSettling(diceIndex, stillFor), 100);
         }
     }
 
@@ -1131,13 +1213,23 @@ export class D20Dice {
             window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
+        const cap = this.singleCaps.get(diceIndex);
+        if (cap !== undefined) {
+            window.clearTimeout(cap);
+            this.singleCaps.delete(diceIndex);
+        }
+        if (this.singleSettling.has(diceIndex)) return;
+        this.singleSettling.add(diceIndex);
 
         const diceType = this.diceTypeArray[diceIndex];
 
         // Wait 2 seconds before checking result to match multi-dice behavior
         window.setTimeout(() => {
+            // Cleared or removed meanwhile: this read is void
+            if (!this.singleSettling.delete(diceIndex)) return;
             // A group roll's own monitor reads and reports every die
             if (this.currentMonitor !== null) return;
+            if (diceIndex >= this.diceArray.length) return;
 
             // Check if dice can be properly detected
             const checkResult = this.checkDiceResult(diceIndex);
@@ -1145,7 +1237,7 @@ export class D20Dice {
             if (checkResult.isCaught) {
                 // A caught die gives no number: it waits to be rolled again, like in a group roll
                 this.holdCaughtSingleDice(diceIndex);
-                this.isRolling = false;
+                this.isRolling = this.diceStates.some((s) => s.isRolling);
                 this.lastRoll = null;
                 log(`🥅 Single dice ${diceIndex} (${diceType}) CAUGHT! Face confidence: ${checkResult.confidence.toFixed(3)}, required: ${checkResult.requiredConfidence.toFixed(3)}`);
                 return;
@@ -1154,7 +1246,9 @@ export class D20Dice {
             this.highlightCaughtDice(diceIndex, false);
             this.isRolling = false;
 
-            // Other dice held from earlier throws keep their state: the roll waits for them
+            // Other dice held from earlier throws keep their state: the roll waits for them.
+            // States that no longer line up with the tray hold nothing.
+            if (this.diceStates.length !== this.diceArray.length) this.diceStates = [];
             const held = this.diceStates;
             const state = held[diceIndex];
             let rolled: RolledDie[] = [{ type: diceType, value: checkResult.result, index: diceIndex }];
@@ -1164,6 +1258,7 @@ export class D20Dice {
                 state.isRolling = false;
                 state.isCaught = false;
                 if (rollWaiting(held)) {
+                    this.isRolling = held.some((s) => s.isRolling);
                     log(`🎲 Dice ${diceIndex} settled with ${checkResult.result}; other dice still to settle`);
                     return;
                 }
@@ -1334,7 +1429,8 @@ export class D20Dice {
             this.diceStates = this.diceArray.map((_, i) => ({
                 index: i,
                 type: this.diceTypeArray[i] || 'd20',
-                isRolling: false,
+                // Another lone die still in the air (or being read) keeps being watched
+                isRolling: this.singleCaps.has(i) || this.singleSettling.has(i),
                 isCaught: false,
                 isComplete: false,
                 result: null,
@@ -1931,8 +2027,8 @@ export class D20Dice {
 
             // Handle different interaction modes
             if (event.ctrlKey && event.altKey) {
-                // Ctrl+Alt+Click: Delete dice
-                this.deleteDiceAtIndex(clickedDiceIndex);
+                // Ctrl+Alt+Click: Delete dice. Not mid-roll: the roll tracks its dice by position.
+                if (!this.rollInProgress) this.deleteDiceAtIndex(clickedDiceIndex);
                 return true;
             } else if (event.ctrlKey) {
                 // Ctrl+Click: Select/drag all dice
@@ -1972,6 +2068,7 @@ export class D20Dice {
         // Update dice count in settings
         (this.settings.diceCounts as Record<string, number>)[diceType]--;
 
+        this.forgetDieState(index);
         this.wake();
     }
 
@@ -2006,6 +2103,7 @@ export class D20Dice {
             window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
+        this.cancelSingleCaps();
         this.isRolling = false;
 
         // Reset the dragged dice position for dragging
@@ -2031,6 +2129,7 @@ export class D20Dice {
             window.clearTimeout(this.rollTimeout);
             this.rollTimeout = null;
         }
+        this.cancelSingleCaps();
         this.isRolling = false;
 
         // Reset all dice positions for dragging
@@ -2275,25 +2374,20 @@ export class D20Dice {
                     this.isRolling = false;
                 },
                 (error) => {
-                    console.error('Throw monitoring error:', error);
+                    if (!(error instanceof DiceClearedError)) console.error('Throw monitoring error:', error);
                     this.isRolling = false;
                 }
             );
         }
 
-        // Set timeout for force stop
-        const baseTimeout = 6000;
-        const extendedTimeout = baseTimeout + (this.settings.motionThreshold * 1000);
-
         this.wake();
 
-        this.rollTimeout = window.setTimeout(() => {
-            if (rollingSingleDice) {
-                this.completeSingleDiceRoll(rolledDiceIndex);
-            } else {
-                this.forceStopMultiRoll();
-            }
-        }, extendedTimeout);
+        // Set timeout for force stop: a lone die still moving by then is caught
+        if (rollingSingleDice) {
+            this.armSingleCap(rolledDiceIndex);
+        } else {
+            this.rollTimeout = window.setTimeout(() => this.forceStopMultiRoll(), this.longestRollMs());
+        }
     }
 
     private forceStop() {
@@ -3061,7 +3155,35 @@ export class D20Dice {
         stableTime: number;
     }> = [];
     private currentMonitor: (() => void) | null = null;
+    /** Ends the group roll in flight with an error, for Clear. */
+    private monitorReject: ((reason?: unknown) => void) | null = null;
     private originalMaterials: Map<number, THREE.Material | THREE.Material[]> = new Map();
+    /** Lone dice settled and waiting out the two seconds before they are read. */
+    private singleSettling = new Set<number>();
+    /** The longest-roll timer of each lone die in the air, by die. */
+    private singleCaps = new Map<number, number>();
+
+    /**
+     * The die at `index` left the tray: its caught or held record goes with it and
+     * later dice move down a place, so it can never hold a later throw. With nothing
+     * left waiting, nothing is held at all.
+     */
+    private forgetDieState(index: number): void {
+        this.diceStates = withoutDie(this.diceStates, index);
+        if (!rollWaiting(this.diceStates)) this.diceStates = [];
+        this.lastRoll = null;
+        this.singleSettling.clear();
+        this.cancelSingleCaps();
+        const shifted = new Map<number, THREE.Material | THREE.Material[]>();
+        this.originalMaterials.forEach((material, i) => {
+            if (i === index) {
+                for (const entry of Array.isArray(material) ? material : [material]) entry?.dispose();
+            } else {
+                shifted.set(i > index ? i - 1 : i, material);
+            }
+        });
+        this.originalMaterials = shifted;
+    }
 
     /**
      * The dice of the last settled roll, handed over once. Some rolls report
@@ -3180,6 +3302,8 @@ export class D20Dice {
         const checkInterval = 100; // Check every 100ms
 
         const monitor = () => {
+            // Superseded or cleared: this roll is over
+            if (this.currentMonitor !== monitor) return;
             try {
                 // Early exit if view is no longer active
                 if (!this.isViewActive) {
@@ -3369,6 +3493,7 @@ export class D20Dice {
 
         // Store the monitor function so it can be resumed after reroll
         this.currentMonitor = monitor;
+        this.monitorReject = reject;
 
         // Start monitoring
         monitor();
@@ -3411,10 +3536,14 @@ export class D20Dice {
             }
         });
 
-        // A lone caught die has no group monitor to watch it land again
+        // A lone caught die has no group monitor to watch it land again: it is
+        // watched like a thrown one, with the same longest roll
         if (this.currentMonitor === null) {
             this.isRolling = true;
-            caughtDice.forEach(state => this.checkSingleDiceSettling(state.index));
+            caughtDice.forEach(state => {
+                this.checkSingleDiceSettling(state.index);
+                this.armSingleCap(state.index);
+            });
         }
 
         this.wake();

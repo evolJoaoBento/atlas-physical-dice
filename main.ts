@@ -1,5 +1,5 @@
 import { Plugin, Notice, debounce, setIcon, Platform, FileSystemAdapter } from 'obsidian';
-import { D20Dice, DicePack, type RolledDie } from './d20-dice';
+import { D20Dice, DiceClearedError, DicePack, type RolledDie } from './d20-dice';
 import { DiceSettings, DEFAULT_SETTINGS, DiceSettingTab, type DiceColor } from './settings';
 import { AtlasLink, sendRollToAtlas, useAtlasLink } from './atlas-bridge';
 import { AtlasLooks } from './atlas-looks';
@@ -330,24 +330,27 @@ export default class D20DicePlugin extends Plugin {
             this.handleRollComplete(result, resultElement);
         };
 
-        // Set up dice status monitoring. The handle lives on the plugin so that
-        // closing the overlay mid-roll stops the poll.
-        const startStatusMonitoring = () => {
-            if (this.statusInterval !== null) return;
-            this.statusInterval = window.setInterval(() => {
-                if (this.dice) {
-                    const status = this.dice.getDiceStatus();
-                    this.updateDiceStatusDisplay(status, statusElement, rerollButton);
-                }
-            }, 500);
+        // Dice status, for every throw: the Roll button, a drag of one die or of
+        // the set, and a reroll. A caught die is only ever told about here ("d20
+        // caught: roll it again", with the reroll button), so the poll runs for as
+        // long as the overlay is open, and only touches the line when the dice's
+        // state changes. The handle lives on the plugin so closing the overlay
+        // stops it.
+        let shownStatus = '';
+        const showDiceStatus = () => {
+            if (!this.dice) return;
+            const status = this.dice.getDiceStatus();
+            const key = JSON.stringify(status);
+            if (key === shownStatus) return;
+            shownStatus = key;
+            this.updateDiceStatusDisplay(status, statusElement, rerollButton);
         };
-
-        const stopStatusMonitoring = () => {
-            if (this.statusInterval !== null) {
-                window.clearInterval(this.statusInterval);
-                this.statusInterval = null;
-            }
+        /** Leave a message on the status line until the dice's state next changes. */
+        const holdStatusLine = () => {
+            shownStatus = JSON.stringify(this.dice?.getDiceStatus() ?? []);
         };
+        if (this.statusInterval !== null) window.clearInterval(this.statusInterval);
+        this.statusInterval = window.setInterval(showDiceStatus, 500);
 
         // Reroll button functionality
         rerollButton.addEventListener('click', () => {
@@ -369,29 +372,29 @@ export default class D20DicePlugin extends Plugin {
             resultElement.className = 'dice-result-overlay';
             statusElement.textContent = 'Starting roll...';
 
-            // Start monitoring dice status during roll
-            startStatusMonitoring();
-
             try {
                 const result = await this.dice.roll();
                 this.handleRollComplete(result, resultElement);
                 statusElement.textContent = 'Roll complete!';
                 rerollButton.hide();
+                holdStatusLine();
 
-                // Stop monitoring after completion
+                // Clear the message, unless a later throw has put its own there
                 window.setTimeout(() => {
-                    stopStatusMonitoring();
-                    statusElement.textContent = '';
+                    if (statusElement.textContent === 'Roll complete!') statusElement.textContent = '';
                 }, 3000);
-            } catch {
+            } catch (error) {
+                // Cleared mid-roll: nothing to report, and nothing went wrong
+                if (error instanceof DiceClearedError) {
+                    statusElement.textContent = '';
+                    rerollButton.hide();
+                    holdStatusLine();
+                    return;
+                }
                 resultElement.textContent = 'Error rolling dice';
                 resultElement.className = 'dice-result-overlay error';
                 statusElement.textContent = 'Roll failed';
-
-                // Stop monitoring on error
-                window.setTimeout(() => {
-                    stopStatusMonitoring();
-                }, 3000);
+                holdStatusLine();
             } finally {
                 rollButton.disabled = false;
                 updateRollButtonText('d20');
@@ -824,6 +827,8 @@ export default class D20DicePlugin extends Plugin {
         statusElement: HTMLElement,
         rerollButton: HTMLButtonElement
     ) {
+        // Dice that are not part of a roll (held beside a caught one) are not listed
+        status = status.filter(d => d.status !== 'unknown');
         if (status.length === 0) {
             statusElement.textContent = '';
             rerollButton.hide();
