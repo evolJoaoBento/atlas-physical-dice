@@ -8,7 +8,7 @@ function memoryFs(initial: Record<string, string> = {}) {
     const folders = new Set<string>();
     const writes: string[] = [];
     const put = (path: string, text: string) => {
-        files.set(path, new TextEncoder().encode(text).buffer as ArrayBuffer);
+        files.set(path, new TextEncoder().encode(text).buffer);
         const parts = path.split('/');
         for (let i = 1; i < parts.length; i++) folders.add(parts.slice(0, i).join('/'));
     };
@@ -21,7 +21,7 @@ function memoryFs(initial: Record<string, string> = {}) {
             folders: [...folders].filter((f) => direct(p, f))
         }),
         read: async (p) => new TextDecoder().decode(files.get(p)),
-        readBinary: async (p) => files.get(p) as ArrayBuffer,
+        readBinary: async (p) => files.get(p),
         writeBinary: async (p, d) => { writes.push(p); files.set(p, d); },
         mkdir: async (p) => { folders.add(p); },
         getResourcePath: (p) => `app://${p}`
@@ -29,7 +29,7 @@ function memoryFs(initial: Record<string, string> = {}) {
     return { fs, files, writes, text: (p: string) => new TextDecoder().decode(files.get(p)) };
 }
 
-const bytes = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
+const bytes = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer;
 
 test('packsFolder sits in the config dir', () => {
     assert.equal(packsFolder('.obsidian'), '.obsidian/atlas-dice-packs');
@@ -103,7 +103,7 @@ test('migratePacks with no old folder copies nothing', async () => {
 
 test('migratePacks finishes a pack a failed run left half copied', async () => {
     const m = memoryFs({ 'old/A/a.png': 'one', 'old/A/b.png': 'two', 'old/A/c.png': 'three' });
-    const write = m.fs.writeBinary;
+    const write = m.fs.writeBinary.bind(m.fs) as PackFs['writeBinary'];
     let count = 0;
     m.fs.writeBinary = async (p, d) => {
         if (++count === 2) throw new Error('disk full');
