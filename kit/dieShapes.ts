@@ -1476,13 +1476,15 @@ function computeFaceNormalsForDiceType(diceType: string, geometry: THREE.BufferG
  * Looked up rather than computed, so the two cannot drift: whatever face
  * comes up, the number reported is the one printed on it. A pack that says
  * nothing falls back to counting from one - except the d10, which counts
- * from zero, and really does have a face reading zero.
+ * from zero, and really does have a face reading zero, and the percentile die,
+ * which counts tens from 00.
  */
 function mapFaceIndexToNumber(faceIndex: number, diceType: string, numbers: number[] | null): number {
     if (numbers) {
         const number = numbers[faceIndex];
         if (number !== undefined) return number;
     }
+    if (diceType === 'd100') return faceIndex * 10;
     return diceType === 'd10' ? faceIndex : faceIndex + 1;
 }
 

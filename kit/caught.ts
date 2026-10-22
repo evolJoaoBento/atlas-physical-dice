@@ -1,5 +1,10 @@
 import type { DieType } from './faces';
 
+// A roll is still waiting while any die is in the air or caught.
+export function rollWaiting(states: readonly { isCaught: boolean; isRolling: boolean }[]): boolean {
+    return states.some((state) => state.isCaught || state.isRolling);
+}
+
 // What to tell the thrower when dice settle on an edge and give no number.
 export function caughtMessage(caught: readonly { type: DieType }[]): string | null {
     if (caught.length === 0) return null;

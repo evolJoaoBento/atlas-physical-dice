@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { DiceSettings } from './settings';
 import { readFace, type DieType } from './kit/faces';
+import { rollWaiting } from './kit/caught';
 import {
     PACK_FALLBACK, dieColor, dieFaceCount, dieFaceNormals, dieFaceNumbers, dieGeometry, dieMaterial,
     diePhysicsShape, dieScale, dieSolid, packDie, packFinish, type DicePack, type PackDie
@@ -1135,6 +1136,9 @@ export class D20Dice {
 
         // Wait 2 seconds before checking result to match multi-dice behavior
         window.setTimeout(() => {
+            // A group roll's own monitor reads and reports every die
+            if (this.currentMonitor !== null) return;
+
             // Check if dice can be properly detected
             const checkResult = this.checkDiceResult(diceIndex);
 
@@ -1147,14 +1151,32 @@ export class D20Dice {
                 return;
             }
 
-            const formattedResult = `1${diceType}(${checkResult.result}) = ${checkResult.result}`;
-            this.lastRoll = [{ type: diceType, value: checkResult.result, index: diceIndex }];
-            log(`📊 Single dice roll result: ${formattedResult}`);
-
-            // Any state left from an earlier catch is settled now
-            this.diceStates = [];
             this.highlightCaughtDice(diceIndex, false);
             this.isRolling = false;
+
+            // Other dice held from earlier throws keep their state: the roll waits for them
+            const held = this.diceStates;
+            const state = held[diceIndex];
+            let rolled: RolledDie[] = [{ type: diceType, value: checkResult.result, index: diceIndex }];
+            if (state) {
+                state.result = checkResult.result;
+                state.isComplete = true;
+                state.isRolling = false;
+                state.isCaught = false;
+                if (rollWaiting(held)) {
+                    log(`🎲 Dice ${diceIndex} settled with ${checkResult.result}; other dice still to settle`);
+                    return;
+                }
+                rolled = held.filter((d) => d.result !== null).map((d) => ({ type: d.type, value: d.result, index: d.index }));
+            }
+            this.diceStates = [];
+
+            const total = rolled.reduce((sum, die) => sum + die.value, 0);
+            const formattedResult = rolled.length === 1
+                ? `1${diceType}(${checkResult.result}) = ${checkResult.result}`
+                : `${rolled.map((die) => `${die.type}=${die.value}`).join(' + ')} = ${total}`;
+            this.lastRoll = rolled;
+            log(`📊 Single dice roll result: ${formattedResult}`);
 
             // Trigger the onRollComplete callback with formatted result
             if (this.onRollComplete) {
@@ -2392,6 +2414,10 @@ export class D20Dice {
 
     private calculateResult(): void {
         const result = this.getTopFaceNumber();
+        if (result === null) {
+            log('Natural dice caught - no result');
+            return;
+        }
         log(`Natural dice result: ${result}`);
         this.lastRoll = [{ type: this.settings.diceType, value: result }];
 
@@ -2593,12 +2619,12 @@ export class D20Dice {
         return euler;
     }
 
-    private getTopFaceNumber(): number {
+    /** The face pointing up, or null when none can be read: a die that cannot be read gives no number. */
+    private getTopFaceNumber(): number | null {
         try {
             if (this.faceNormals.length === 0) {
-                log('Face normals not calculated, falling back to random');
-                const faceCount = this.getFaceCount();
-                return Math.floor(Math.random() * faceCount) + 1;
+                log('Face normals not calculated, no reading');
+                return null;
             }
 
             // Define the detection vector based on dice type
@@ -2672,13 +2698,13 @@ export class D20Dice {
             if (bestDotProduct < minDotProduct) {
                 log(`⚠️ No face is clearly pointing ${detectionType}! Best dot product: ${bestDotProduct.toFixed(3)} (threshold: ${minDotProduct.toFixed(3)})`);
                 log('Dice may still be moving or in an edge case orientation');
+                return null;
             }
 
             return bestFace;
         } catch (error) {
             console.error('Error in face normal detection:', error);
-            const faceCount = this.getFaceCount();
-            return Math.floor(Math.random() * faceCount) + 1;
+            return null;
         }
     }
 
@@ -2741,6 +2767,7 @@ export class D20Dice {
 
     private snapToNearestFace(): void {
         const nearestFace = this.getTopFaceNumber();
+        if (nearestFace === null) return;
 
         // All snap behavior removed - dice settle naturally
 

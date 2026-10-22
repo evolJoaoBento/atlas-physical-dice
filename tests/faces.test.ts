@@ -48,20 +48,25 @@ test('a table of the wrong size is caught, never read', () => {
 });
 
 test('a number that is not on the die is caught, never read', () => {
-    // The d100 fallback without pack faces numbers ten faces 1..10: not tens.
-    const tens = Array.from({ length: 10 }, (_, i) => i * 10);
     const d100Normals = Array.from({ length: 10 }, (_, i) => (i === 0 ? { x: 0, y: 1, z: 0 } : { x: 0, y: -1, z: 0 }));
+    const tens = Array.from({ length: 10 }, (_, i) => i * 10);
     assert.equal(readFace('d100', d100Normals, tens, identity, 0.1).face, 0);
-    const ones = Array.from({ length: 10 }, (_, i) => i + 1);
-    const wrong = readFace('d100', d100Normals, ones, identity, 0.1);
-    assert.equal(wrong.caught, true);
-    assert.equal(wrong.face, null);
-    // And a d6 with a 7 on it.
+    // Past the die's top number, or not a whole number.
+    assert.equal(readFace('d100', d100Normals, [...tens.slice(1), 101], identity, 0.1).caught, true);
     assert.equal(readFace('d6', normals, [7, 2, 5, 3, 4, 1], identity, 0.1).caught, true);
+    assert.equal(readFace('d6', normals, [1.5, 2, 5, 3, 4, 6], identity, 0.1).caught, true);
+    assert.equal(readFace('d6', normals, [-1, 2, 5, 3, 4, 6], identity, 0.1).caught, true);
 });
 
-test('a d10 may number its faces 0-9 or 1-10', () => {
+test('a table that repeats a number is caught, never read', () => {
+    const reading = readFace('d6', normals, [6, 2, 5, 3, 4, 6], identity, 0.1);
+    assert.equal(reading.caught, true);
+    assert.equal(reading.face, null);
+});
+
+test('a d10 may number its faces 0-9 or 1-10, and no higher', () => {
     const d10Normals = Array.from({ length: 10 }, (_, i) => (i === 0 ? { x: 0, y: 1, z: 0 } : { x: 0, y: -1, z: 0 }));
     assert.equal(readFace('d10', d10Normals, Array.from({ length: 10 }, (_, i) => i), identity, 0.1).face, 0);
     assert.equal(readFace('d10', d10Normals, Array.from({ length: 10 }, (_, i) => i + 1), identity, 0.1).face, 1);
+    assert.equal(readFace('d10', d10Normals, Array.from({ length: 10 }, (_, i) => i + 2), identity, 0.1).caught, true);
 });

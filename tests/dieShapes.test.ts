@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { DIE_TYPES, readFace, type DieType } from '../kit/faces';
-import { dieFaceNormals, dieGeometry, diePhysicsShape, type DicePack } from '../kit/dieShapes';
+import { dieFaceNormals, dieFaceNumbers, dieGeometry, diePhysicsShape, type DicePack } from '../kit/dieShapes';
 import packJson from '../dice/Texture-Pack-Default/pack.json';
 
 // The shipped default pack: it carries the numbers and polygon atlases the tray actually uses.
@@ -65,4 +65,8 @@ test('each face read upright reads its own number', () => {
             assert.equal(readFace(type, normals, numbers, q, 0.01).face, numbers[i], `${type} face ${i}`);
         });
     }
+});
+
+test('a d100 with no pack numbers counts tens from 00, never ones', () => {
+    assert.deepEqual(dieFaceNumbers('d100', {} as DicePack, 10), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
 });
