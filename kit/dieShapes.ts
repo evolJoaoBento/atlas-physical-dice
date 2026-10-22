@@ -813,7 +813,7 @@ function chamferGeometry(
         pulled.push(moved);
 
         for (let v = 0; v < perFace; v++) {
-            const to = moved.get(cornerOf[base + v]);
+            const to = moved.get(cornerOf[base + v])!;
             positions[(base + v) * 3] = to.x;
             positions[(base + v) * 3 + 1] = to.y;
             positions[(base + v) * 3 + 2] = to.z;
@@ -863,17 +863,17 @@ function chamferGeometry(
             const to = round[(i + 1) % round.length];
             const key = from < to ? `${from}:${to}` : `${to}:${from}`;
             if (!edges.has(key)) edges.set(key, []);
-            edges.get(key).push({ face, from, to });
+            edges.get(key)!.push({ face, from, to });
         }
     }
     for (const [, sides] of edges) {
         if (sides.length !== 2) continue;
         const [a, b] = sides;
         patch([
-            pulled[a.face].get(a.from),
-            pulled[a.face].get(a.to),
-            pulled[b.face].get(a.to),
-            pulled[b.face].get(a.from)
+            pulled[a.face].get(a.from)!,
+            pulled[a.face].get(a.to)!,
+            pulled[b.face].get(a.to)!,
+            pulled[b.face].get(a.from)!
         ]);
     }
 
