@@ -68,5 +68,27 @@ test('each face read upright reads its own number', () => {
 });
 
 test('a d100 with no pack numbers counts tens from 00, never ones', () => {
-    assert.deepEqual(dieFaceNumbers('d100', {} as DicePack, 10), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+    assert.deepEqual(dieFaceNumbers('d100', {}, 10), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+});
+
+// A pack that gives the percentile die no shape (no manifest, a pack.json that failed to load, or a d100 entry
+// without faces) still builds it as the d10 it is, numbered in tens: never a die that is caught on every throw.
+test('a d100 the pack gives no shape is a d10 numbered in tens', () => {
+    const packs: DicePack[] = [{}, { bevel: { enabled: false } }, { dice: { d100: { geometry: 'd10' } } }, { dice: { d100: { texture: 'd100.png' } } }];
+    for (const shapeless of packs) {
+        const label = JSON.stringify(shapeless);
+        const geometry = dieGeometry('d100', 1, shapeless);
+        const d10 = dieGeometry('d10', 1, shapeless);
+        assert.equal(geometry.attributes.position.count, d10.attributes.position.count, `${label} d10 hull`);
+        const { normals, numbers } = dieFaceNormals('d100', geometry);
+        assert.equal(normals.length, 10, `${label} faces`);
+        assert.deepEqual(numbers.slice().sort((a, b) => a - b), NUMBERS.d100, `${label} numbers`);
+        assert.deepEqual(dieFaceNumbers('d100', shapeless, normals.length), numbers, `${label} tray numbers`);
+        normals.forEach((n, i) => {
+            const centre = faceCentroid(geometry, i, 10).normalize();
+            assert.ok(n.x * centre.x + n.y * centre.y + n.z * centre.z > 0.7, `${label} face ${i} points at its face`);
+            const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(n.x, n.y, n.z), new THREE.Vector3(0, 1, 0));
+            assert.equal(readFace('d100', normals, numbers, q, 0.01).face, numbers[i], `${label} face ${i} reads`);
+        });
+    }
 });

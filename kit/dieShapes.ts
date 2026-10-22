@@ -148,9 +148,16 @@ export function dieScale(diceType: string, pack: DicePack): number {
     return packDie(diceType, pack).scale ?? PACK_FALLBACK.scale;
 }
 
-/** The solid a die is built from, which is usually the die itself. */
+/**
+ * The solid a die is built from, which is usually the die itself. A percentile
+ * die is always a d10: one whose pack lays out no faces of its own (no `faces`
+ * or `grid`, or no pack.json at all) is built, laid out and read as the d10 it
+ * is, and numbered in tens - never as a d20 that no face table fits.
+ */
 export function dieSolid(diceType: string, pack: DicePack): string {
-    return packDie(diceType, pack).geometry || diceType;
+    const entry = packDie(diceType, pack);
+    if (diceType === 'd100') return entry.faces || entry.grid ? entry.geometry || 'd10' : 'd10';
+    return entry.geometry || diceType;
 }
 
 /**
@@ -1246,7 +1253,7 @@ function applyUVMappingForDiceType(geometry: THREE.BufferGeometry, diceType: str
     if (applyQuadAtlasUV(geometry, diceType, pack)) return;
     if (applyPolyAtlasUV(geometry, diceType, pack)) return;
 
-    switch (diceType) {
+    switch (dieSolid(diceType, pack)) {
         case 'd4':
             applyTriangleUVMapping(geometry, 4);
             break;
@@ -1403,20 +1410,12 @@ function computeFaceNormalsForDiceType(diceType: string, geometry: THREE.BufferG
             ];
         }
 
-        case 'd10': {
-            // D10 face normals (kite-shaped faces)
-            const normals: THREE.Vector3[] = [];
-            for (let i = 0; i < 10; i++) {
-                const angle = (i * 2 * Math.PI / 10);
-                const normal = new THREE.Vector3(
-                    Math.cos(angle),
-                    0.3, // Slight upward angle
-                    Math.sin(angle)
-                ).normalize();
-                normals.push(normal);
-            }
-            return normals;
-        }
+        case 'd10':
+            // A kite is two triangles running together in the buffer, so its
+            // normal comes from the geometry itself. The fixed table this used
+            // to return tilted every face upward and matched no face of the
+            // solid, so a d10 (or percentile die) with no atlas never read.
+            return deriveFaceNormalsFromGeometry(geometry, 10);
 
         case 'd12': {
             // Dodecahedron face normals (12 pentagonal faces)
@@ -1544,6 +1543,7 @@ export function dieGeometry(type: DieType, size: number, pack: DicePack): THREE.
     const faces = packDie(type, pack).faces;
     geometry.userData.atlasFaces = faces ? faces.length : null;
     geometry.userData.faceNumbers = numbersFor(type, pack);
+    geometry.userData.solid = dieSolid(type, pack);
     return geometry;
 }
 
@@ -1556,7 +1556,8 @@ export function dieFaceNumbers(type: DieType, pack: DicePack, count: number): nu
 /** Which way each numbered face points, and the number printed on it, index-aligned. */
 export function dieFaceNormals(type: DieType, geometry: THREE.BufferGeometry): { normals: Vec3[]; numbers: number[] } {
     const packNumbers = (geometry.userData.faceNumbers as number[] | null | undefined) ?? null;
-    const normals = computeFaceNormalsForDiceType(type, geometry).map((n) => ({ x: n.x, y: n.y, z: n.z }));
+    const solid = (geometry.userData.solid as string | undefined) ?? type;
+    const normals = computeFaceNormalsForDiceType(solid, geometry).map((n) => ({ x: n.x, y: n.y, z: n.z }));
     const numbers = normals.map((_, i) => mapFaceIndexToNumber(i, type, packNumbers));
     return { normals, numbers };
 }
