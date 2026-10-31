@@ -1,5 +1,6 @@
 import type { App, Plugin } from 'obsidian';
 import type { RolledDie } from './d20-dice';
+import { critOf, viewCollectionDice } from './atlas-rules';
 
 /**
  * Hands settled rolls to Atlas VTT, and holds the plugin's connection to
@@ -37,6 +38,8 @@ export interface AtlasDiceRoll {
     rolls: Array<{ die: string; value: number; max: number; min?: number; color?: string; colorName?: string; colour?: string; name?: string }>;
     modifiers: number;
     total: number;
+    /** A critical result, as a released Atlas's log shows it (`high`, `low`). */
+    crit?: 'high' | 'low';
     player?: string;
     source?: { type: 'toolbar' | 'statblock' };
 }
@@ -307,24 +310,24 @@ interface RollBus {
 const ATLAS_VIEW_TYPE = 'atlas-vtt';
 
 /**
- * The event bus of the Atlas map view the GM works in, on a released Atlas without the extension API (0.7, 0.8):
- * the most recent leaf when it is a map view, else the first one open. Null without one, or where this Atlas keeps
- * its views another way.
+ * The Atlas map view the GM works in, on a released Atlas without the extension API (0.7, 0.8): the most recent leaf
+ * when it is a map view, else the first one open. Null without one, or where this Atlas keeps its views another way.
+ * Its event bus is where the roll goes, and its dice tool holds the rules of the collection of the map it shows.
  */
-function stockMapBus(app: App): RollBus | null {
-    const busOf = (view: unknown): RollBus | null => {
+function stockMapView(app: App): { bus: RollBus; view: unknown } | null {
+    const found = (view: unknown): { bus: RollBus; view: unknown } | null => {
         const v = view as { getViewType?(): string; serviceManager?: { getEventBus?(): unknown }; atlasStore?: { getState?(): { remoteView?: unknown } } } | null;
         if (!v || typeof v.getViewType !== 'function' || v.getViewType() !== ATLAS_VIEW_TYPE) return null;
         // Another plugin's read-only view of a map is no table to log in.
         if (v.atlasStore?.getState?.().remoteView) return null;
         const bus = v.serviceManager?.getEventBus?.() as { emit?: unknown } | undefined;
-        return bus && typeof bus.emit === 'function' ? bus as RollBus : null;
+        return bus && typeof bus.emit === 'function' ? { bus: bus as RollBus, view } : null;
     };
-    const recent = busOf(app.workspace.getMostRecentLeaf()?.view);
+    const recent = found(app.workspace.getMostRecentLeaf()?.view);
     if (recent) return recent;
     for (const leaf of app.workspace.getLeavesOfType(ATLAS_VIEW_TYPE)) {
-        const bus = busOf(leaf.view);
-        if (bus) return bus;
+        const view = found(leaf.view);
+        if (view) return view;
     }
     return null;
 }
@@ -335,11 +338,13 @@ function stockMapBus(app: App): RollBus | null {
  * Atlas reads when there is none), which makes Atlas show the roll as its result card rather than throw its own 3D
  * dice: these dice were already thrown on screen. Each die's colour tag goes as Atlas names it.
  */
-function stockRoll(roll: AtlasDiceRoll): AtlasDiceRoll {
+function stockRoll(roll: AtlasDiceRoll, crit?: 'high' | 'low'): AtlasDiceRoll {
     // A released Atlas names the tag `colour` and `name` (its `diceFormula.ts`): the dice log, the result card and its
     // online players show it from those.
     return {
         ...roll,
+        // The collection's critical rule, as Atlas's own dice tool marks a roll of the collection's dice.
+        ...(crit ? { crit } : {}),
         rolls: roll.rolls.map(({ color, colorName, ...die }) => ({
             ...die, min: 1, ...(color ? { colour: color } : {}), ...(colorName ? { name: colorName } : {}),
         })),
@@ -369,10 +374,12 @@ export function sendRollToAtlas(dice: AtlasRolledDie[]): void {
         }
     }
     // A released Atlas without the API: straight into the map view's dice log.
-    const bus = link ? stockMapBus(link.app) : null;
-    if (bus) {
+    const target = link ? stockMapView(link.app) : null;
+    if (target) {
         try {
-            bus.emit('dice-rolled', stockRoll(roll));
+            const rules = viewCollectionDice(target.view);
+            const crit = rules ? critOf(rules, dice.map((die) => ({ type: die.type, value: die.value }))) : undefined;
+            target.bus.emit('dice-rolled', stockRoll(roll, crit));
             return;
         } catch (error) {
             console.warn('Atlas VTT Physical Dice: could not log the roll in Atlas, sending it as an event instead:', error);
