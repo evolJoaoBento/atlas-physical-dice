@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+Compatible with Atlas VTT 0.11.0 (Mosaic Canvas); no change was needed for it.
+
+- **Critical results in Atlas's roll log.** A settled roll reports a critical high or low, decided by the critical rule of
+  the collection of the map being played (natural, roll-under, doubles, high-total or none) and the kinds of die its set
+  rolls. A map view that gives no rule marks nothing.
+
 ## 1.1.0-beta.1
 
 Works with Atlas VTT's extension API up to 1.18 (dice looks, whole-face looks,

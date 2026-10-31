@@ -1,5 +1,7 @@
 # Interactive Dice for Atlas VTT
 
+**Compatible with Atlas VTT 0.11.0** (Mosaic Canvas).
+
 Interactive Dice for Atlas VTT is a community extension. It is not made, endorsed or supported by Atlas VTT or Atlas Online.
 
 Throw real 3D dice over your notes, and send every result to [Atlas VTT](https://github.com/ByteMirror/atlas-vtt)'s dice log.
